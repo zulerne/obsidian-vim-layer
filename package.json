@@ -1,6 +1,6 @@
 {
   "name": "vim-layer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "One Vim keyboard layer for all of Obsidian, in any keyboard layout: a which-key leader menu, Reading view keys and link hints, Harpoon, input method switching and .vimrc.",
   "main": "main.js",
