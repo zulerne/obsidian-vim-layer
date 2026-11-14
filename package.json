@@ -1,6 +1,6 @@
 {
   "name": "vim-layer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Vim keys beyond the editor: a Space leader menu with key hints, Reading view navigation and link hints, Harpoon-style file marks, .vimrc mappings, and a Latin layout outside Insert mode. Works in any keyboard layout.",
   "main": "main.js",
