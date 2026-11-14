@@ -1,0 +1,177 @@
+body {
+	--vim-layer-leader-column-width: 220px;
+	--vim-layer-leader-max-height: 40%;
+	--vim-layer-leader-group-color: var(--text-accent);
+	--vim-layer-leader-key-color: var(--text-accent);
+}
+
+/* Leader menu: a full-width bar at the bottom of the window. */
+.modal.vim-layer-leader {
+	position: absolute;
+	bottom: 0;
+	width: 100%;
+	max-width: none;
+	min-height: 0;
+	max-height: var(--vim-layer-leader-max-height);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	border: none;
+	border-top: var(--modal-border-width) solid var(--modal-border-color);
+	border-radius: 0;
+	box-shadow: none;
+}
+
+.vim-layer-leader-items {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(var(--vim-layer-leader-column-width), 1fr));
+	gap: var(--size-2-2) var(--size-4-4);
+	overflow-y: auto;
+}
+
+.vim-layer-leader-item {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+	min-width: 0;
+}
+
+.vim-layer-leader-item kbd {
+	flex: 0 0 auto;
+	min-width: 2.2em;
+	text-align: center;
+	color: var(--vim-layer-leader-key-color);
+}
+
+.vim-layer-leader-label {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.vim-layer-leader-item.is-group .vim-layer-leader-label {
+	color: var(--vim-layer-leader-group-color);
+}
+
+.vim-layer-leader-item.is-invalid .vim-layer-leader-label {
+	color: var(--text-error);
+}
+
+.vim-layer-leader-status {
+	display: flex;
+	gap: var(--size-4-3);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.vim-layer-leader-path {
+	color: var(--text-normal);
+}
+
+/* Before the hint delay: no dimmed background, no hints, only the status line. */
+.vim-layer-leader-container.vim-layer-leader-collapsed .modal-bg {
+	background: transparent;
+}
+
+.vim-layer-leader-container.vim-layer-leader-collapsed .vim-layer-leader-items {
+	display: none;
+}
+
+/* Link hints in Reading view. */
+.vim-layer-hints {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: var(--layer-popover);
+}
+
+.vim-layer-hint {
+	position: fixed;
+	padding: 0 3px;
+	border: 1px solid var(--vim-layer-hint-border, #c08a00);
+	border-radius: 3px;
+	background: var(--vim-layer-hint-bg, linear-gradient(#fff785, #ffc542));
+	color: var(--vim-layer-hint-fg, #302505);
+	font-family: var(--font-monospace);
+	font-size: var(--vim-layer-hint-font-size, 11px);
+	font-weight: 700;
+	line-height: 1.4;
+	text-transform: uppercase;
+	box-shadow: var(--shadow-s);
+	white-space: nowrap;
+}
+
+.vim-layer-hint.is-filtered {
+	display: none;
+}
+
+.vim-layer-hint-typed {
+	opacity: 0.5;
+}
+
+.vim-layer-omni-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+/* Mode indicator in the status bar. */
+.vim-layer-mode {
+	padding: 0 var(--size-4-2);
+	border-radius: var(--radius-s);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.18);
+}
+
+.vim-layer-mode[data-mode="normal"] {
+	color: var(--color-green);
+	background: rgba(var(--color-green-rgb), 0.18);
+}
+
+.vim-layer-mode[data-mode="insert"] {
+	color: var(--color-blue);
+	background: rgba(var(--color-blue-rgb), 0.18);
+}
+
+.vim-layer-mode[data-mode="visual"],
+.vim-layer-mode[data-mode="replace"] {
+	color: var(--color-orange);
+	background: rgba(var(--color-orange-rgb), 0.18);
+}
+
+/* Harpoon list. */
+.vim-layer-harpoon-item {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
+	cursor: var(--cursor);
+}
+
+.vim-layer-harpoon-item.is-selected {
+	background: var(--background-modifier-hover);
+}
+
+.vim-layer-harpoon-empty,
+.vim-layer-harpoon-help {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	padding: var(--size-4-2);
+}
+
+/* Settings. */
+.vim-layer-setting-code {
+	width: 100%;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+.vim-layer-setting-warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-small);
+	padding: var(--size-4-1) 0 var(--size-4-2);
+}

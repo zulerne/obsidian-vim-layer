@@ -1,0 +1,386 @@
+// Reading view layer: Vim keys while a note is in Reading view, switching between reading and editing,
+// and the mode indicator. Replaces Vimium+.
+import { MarkdownView, View, WorkspaceLeaf } from "obsidian";
+import { eventToKey, parseKey } from "../keys";
+import type VimLayerPlugin from "../main";
+import { cmOf, isPluginEnabled, runCommand, vaultConfig } from "../obsidian-internal";
+import { HintEngine } from "./hints";
+import { collectBookmarks, collectRecentFiles, OmniModal } from "./omnibar";
+import { scrollBy, scrollHalfPage, scrollToEdge } from "./scroll";
+
+const CHORD_TIMEOUT_MS = 600;
+
+export const DEFAULT_READING_KEYMAP = `# Reading view keys: key sequence, then a command ID. Later lines win.
+j vim-layer:scroll-down
+k vim-layer:scroll-up
+d vim-layer:scroll-half-page-down
+u vim-layer:scroll-half-page-up
+g g vim-layer:scroll-to-top
+G vim-layer:scroll-to-bottom
+f vim-layer:hints
+F vim-layer:hints-new-tab
+i vim-layer:edit
+/ editor:open-search
+J workspace:next-tab
+K workspace:previous-tab
+t workspace:new-tab
+x workspace:close
+X workspace:undo-close-pane
+H app:go-back
+L app:go-forward
+b vim-layer:bookmarks
+B vim-layer:bookmarks-new-tab
+O vim-layer:omnibar
+o switcher:open
+p command-palette:open
+space vim-layer:leader
+`;
+
+export interface ReadingBinding {
+	keys: string[];
+	command: string;
+}
+
+export function parseReadingKeymap(text: string): { bindings: ReadingBinding[]; errors: string[] } {
+	const bindings = new Map<string, ReadingBinding>();
+	const errors: string[] = [];
+	text.split("\n").forEach((raw, i) => {
+		const line = raw.trim();
+		if (!line || line.startsWith("#")) return;
+		const tokens = line.split(/\s+/);
+		if (tokens.length < 2) {
+			errors.push(`line ${i + 1}: expected keys and a command ID`);
+			return;
+		}
+		const command = tokens.pop() as string;
+		const keys = tokens.map(parseKey);
+		if (keys.some((k) => k === null)) {
+			errors.push(`line ${i + 1}: unknown key in "${tokens.join(" ")}"`);
+			return;
+		}
+		const k = keys as string[];
+		// "-" as the command removes a binding.
+		if (command === "-") bindings.delete(k.join(" "));
+		else bindings.set(k.join(" "), { keys: k, command });
+	});
+	return { bindings: [...bindings.values()], errors };
+}
+
+type Mode = "reading" | "editing";
+
+function isEditableTarget(): boolean {
+	const el = activeDocument.activeElement as HTMLElement | null;
+	if (!el) return false;
+	return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+}
+
+export class ReadingLayer {
+	readonly hints: HintEngine;
+	private bindings: ReadingBinding[] = [];
+	private pending: string[] = [];
+	private pendingTimer: number | null = null;
+	private mode: Mode = "reading";
+	private indicatorEl: HTMLElement | null = null;
+	private prevDefaultViewMode: unknown = undefined;
+	private prevVimMode: unknown = undefined;
+
+	constructor(private readonly plugin: VimLayerPlugin) {
+		this.hints = new HintEngine(plugin.app, () => ({
+			chars: plugin.settings.hintChars,
+			selectors: plugin.settings.hintSelectors,
+			fontSize: plugin.settings.hintFontSize,
+			keyMode: plugin.settings.keyMode,
+		}));
+	}
+
+	/** Takes over only when the module is on and Vimium+ is not running. */
+	get active(): boolean {
+		return this.plugin.settings.readingEnabled && !isPluginEnabled(this.plugin.app, "vimium-plus");
+	}
+
+	load(): void {
+		const { plugin } = this;
+		const { app } = plugin;
+		this.reloadKeymap();
+		this.registerCommands();
+
+		const bind = (doc: Document) => plugin.registerDomEvent(doc, "keydown", (e) => this.onKeyDown(e), { capture: true });
+		bind(activeDocument);
+		plugin.registerEvent(app.workspace.on("window-open", (win) => bind(win.doc)));
+
+		plugin.registerEvent(
+			app.workspace.on("active-leaf-change", (leaf) => {
+				void this.forceReading(leaf).then(() => this.syncFromView());
+			}),
+		);
+		plugin.registerEvent(app.workspace.on("layout-change", () => this.syncFromView()));
+		plugin.registerEvent(app.workspace.on("file-open", () => void this.forceReading(app.workspace.getMostRecentLeaf())));
+		plugin.vimMode.onModeChange(() => this.refreshIndicator());
+
+		app.workspace.onLayoutReady(() => {
+			this.applyConfig();
+			this.syncFromView();
+		});
+		plugin.register(() => {
+			this.hints.hide();
+			this.clearPending();
+			this.indicatorEl?.remove();
+			this.restoreConfig();
+		});
+	}
+
+	reloadKeymap(): string[] {
+		const { bindings, errors } = parseReadingKeymap(this.plugin.settings.readingKeymap);
+		this.bindings = bindings;
+		return errors;
+	}
+
+	/** Apply "Force Reading view" and "Turn on Vim mode", remembering previous values to restore. */
+	applyConfig(): void {
+		const config = vaultConfig(this.plugin.app);
+		const s = this.plugin.settings;
+		const on = this.active;
+		if (on && s.forceReadingView) {
+			if (this.prevDefaultViewMode === undefined) {
+				this.prevDefaultViewMode = config.getConfig("defaultViewMode") ?? "source";
+				config.setConfig("defaultViewMode", "preview");
+			}
+		} else if (this.prevDefaultViewMode !== undefined) {
+			config.setConfig("defaultViewMode", this.prevDefaultViewMode);
+			this.prevDefaultViewMode = undefined;
+		}
+		if (on && s.enableVimMode) {
+			if (this.prevVimMode === undefined) {
+				this.prevVimMode = config.getConfig("vimMode") ?? false;
+				config.setConfig("vimMode", true);
+			}
+		} else if (this.prevVimMode !== undefined) {
+			config.setConfig("vimMode", this.prevVimMode);
+			this.prevVimMode = undefined;
+		}
+		this.refreshIndicator();
+	}
+
+	private restoreConfig(): void {
+		const config = vaultConfig(this.plugin.app);
+		if (this.prevDefaultViewMode !== undefined) config.setConfig("defaultViewMode", this.prevDefaultViewMode);
+		if (this.prevVimMode !== undefined) config.setConfig("vimMode", this.prevVimMode);
+	}
+
+	private registerCommands(): void {
+		const { plugin } = this;
+		const { app } = plugin;
+		const step = () => plugin.settings.scrollStep;
+		const cmds: [string, string, () => void][] = [
+			["scroll-down", "Scroll down", () => scrollBy(app, step())],
+			["scroll-up", "Scroll up", () => scrollBy(app, -step())],
+			["scroll-half-page-down", "Scroll half a page down", () => scrollHalfPage(app, 1)],
+			["scroll-half-page-up", "Scroll half a page up", () => scrollHalfPage(app, -1)],
+			["scroll-to-top", "Scroll to top", () => scrollToEdge(app, "top")],
+			["scroll-to-bottom", "Scroll to bottom", () => scrollToEdge(app, "bottom")],
+			["hints", "Show link hints", () => this.hints.show(false)],
+			["hints-new-tab", "Show link hints (open in new tab)", () => this.hints.show(true)],
+			["edit", "Edit note (leave Reading view)", () => void this.enterEditing()],
+			["read", "Return to Reading view", () => void this.exitToReading()],
+			["bookmarks", "Open bookmark", () => new OmniModal(app, collectBookmarks(app), false, false).open()],
+			["bookmarks-new-tab", "Open bookmark in new tab", () => new OmniModal(app, collectBookmarks(app), true, false).open()],
+			["omnibar", "Open bookmark, recent file or URL in new tab", () => this.openOmnibar()],
+		];
+		for (const [id, name, callback] of cmds) plugin.addCommand({ id, name, callback });
+	}
+
+	private openOmnibar(): void {
+		const { app } = this.plugin;
+		const items = collectBookmarks(app);
+		const seen = new Set(items.map((i) => i.detail));
+		for (const item of collectRecentFiles(app)) if (!seen.has(item.detail)) items.push(item);
+		new OmniModal(app, items, true, true).open();
+	}
+
+	// ---- key routing ----
+
+	private onKeyDown(e: KeyboardEvent): void {
+		if (!this.active) return;
+		if (this.hints.active) {
+			e.preventDefault();
+			e.stopPropagation();
+			this.hints.handleKey(e);
+			return;
+		}
+		if (e.defaultPrevented || activeDocument.querySelector(".modal-container")) {
+			this.clearPending();
+			return;
+		}
+		if (e.key === "Escape" && this.handleEditorEscape(e)) {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
+		if (!this.inReadingContext() || isEditableTarget()) return;
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const key = eventToKey(e, this.plugin.settings.keyMode);
+		if (key === null) return;
+		if (this.feedKey(key)) {
+			e.preventDefault();
+			e.stopPropagation();
+		}
+	}
+
+	/** Reading view of a note, or an empty tab. */
+	private inReadingContext(): boolean {
+		const view = this.plugin.app.workspace.getActiveViewOfType(View);
+		if (!view) return false;
+		if (view instanceof MarkdownView) return view.getMode() === "preview";
+		return view.getViewType() === "empty";
+	}
+
+	/** Esc in Vim normal mode (nothing pending) leaves the editor for Reading view. */
+	private handleEditorEscape(e: KeyboardEvent): boolean {
+		if (!this.plugin.settings.escapeToReading || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return false;
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view || view.getMode() !== "source") return false;
+		const target = activeDocument.activeElement;
+		if (!target || !view.contentEl.contains(target) || !target.closest(".cm-editor")) return false;
+		const vim = cmOf(view)?.state?.vim;
+		if (vim) {
+			const input = vim.inputState;
+			const busy =
+				vim.insertMode ||
+				vim.visualMode ||
+				!!input?.operator ||
+				!!input?.keyBuffer?.length ||
+				!!input?.prefixRepeat?.length ||
+				!!input?.motionRepeat?.length;
+			if (busy) return false;
+		}
+		void this.exitToReading();
+		return true;
+	}
+
+	private feedKey(key: string): boolean {
+		const hadPending = this.pending.length > 0;
+		const candidate = [...this.pending, key];
+		const seq = candidate.join(" ");
+		const exact = this.bindings.find((b) => b.keys.join(" ") === seq);
+		const extendable = this.bindings.some(
+			(b) => b.keys.length > candidate.length && b.keys.slice(0, candidate.length).join(" ") === seq,
+		);
+		if (extendable) {
+			this.clearPending();
+			this.pending = candidate;
+			this.pendingTimer = window.setTimeout(() => {
+				this.pending = [];
+				this.pendingTimer = null;
+				if (exact) this.run(exact.command);
+			}, CHORD_TIMEOUT_MS);
+			return true;
+		}
+		this.clearPending();
+		if (exact) {
+			this.run(exact.command);
+			return true;
+		}
+		// Dead end: drop the buffered prefix and try this key on its own.
+		return hadPending ? this.feedKey(key) : false;
+	}
+
+	private clearPending(): void {
+		this.pending = [];
+		if (this.pendingTimer !== null) window.clearTimeout(this.pendingTimer);
+		this.pendingTimer = null;
+	}
+
+	private run(command: string): void {
+		runCommand(this.plugin.app, command);
+	}
+
+	// ---- reading / editing ----
+
+	async enterEditing(): Promise<void> {
+		const { app } = this.plugin;
+		const view = app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+		const centerLine = this.readingCenterLine(view);
+		this.mode = "editing";
+		await this.setLeafMode(view.leaf, "source");
+		const fresh = app.workspace.getActiveViewOfType(MarkdownView);
+		if (fresh && centerLine !== null) {
+			const pos = { line: centerLine, ch: 0 };
+			fresh.editor.setCursor(pos);
+			fresh.editor.scrollIntoView({ from: pos, to: pos }, true);
+		}
+		fresh?.editor.focus();
+		this.refreshIndicator();
+	}
+
+	async exitToReading(): Promise<void> {
+		this.mode = "reading";
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view) {
+			await this.setLeafMode(view.leaf, "preview");
+			(activeDocument.activeElement as HTMLElement | null)?.blur?.();
+		}
+		this.refreshIndicator();
+	}
+
+	/** Source line near the middle of the Reading view, so editing starts where you were reading. */
+	private readingCenterLine(view: MarkdownView): number | null {
+		const total = view.editor.lineCount();
+		const container = view.containerEl.querySelector<HTMLElement>(".markdown-preview-view");
+		if (total <= 0 || !container || container.scrollHeight <= 0) return null;
+		const top = view.previewMode.getScroll();
+		const visible = (container.clientHeight / container.scrollHeight) * total;
+		return Math.min(Math.max(Math.round(top + visible / 2), 0), total - 1);
+	}
+
+	private syncFromView(): void {
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view) this.mode = view.getMode() === "preview" ? "reading" : "editing";
+		this.refreshIndicator();
+	}
+
+	private async forceReading(leaf: WorkspaceLeaf | null): Promise<void> {
+		if (!this.active || !this.plugin.settings.forceReadingView || this.mode !== "reading" || !leaf) return;
+		const state = leaf.getViewState();
+		if (state.type !== "markdown" || state.state?.mode === "preview") return;
+		await this.setLeafMode(leaf, "preview");
+	}
+
+	private async setLeafMode(leaf: WorkspaceLeaf, mode: "source" | "preview"): Promise<void> {
+		const state = leaf.getViewState();
+		if (state.type !== "markdown") return;
+		state.state = { ...state.state, mode };
+		// Editing opens Live Preview rather than raw source.
+		if (mode === "source") state.state.source = false;
+		await leaf.setViewState(state);
+	}
+
+	// ---- mode indicator ----
+
+	refreshIndicator(): void {
+		const { plugin } = this;
+		if (!this.active || !plugin.settings.showModeIndicator) {
+			this.indicatorEl?.remove();
+			this.indicatorEl = null;
+			return;
+		}
+		if (!this.indicatorEl) {
+			this.indicatorEl = plugin.addStatusBarItem();
+			this.indicatorEl.addClass("vim-layer-mode");
+		}
+		const el = this.indicatorEl;
+		const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		let text = "";
+		let cls = "";
+		if (view?.getMode() === "preview") text = "READING";
+		else if (view) {
+			const vim = cmOf(view)?.state?.vim;
+			const m = vim ? plugin.vimMode.mode : null;
+			text = m ? m.toUpperCase() : "EDITING";
+			cls = m ?? "insert";
+		}
+		el.setText(text);
+		el.toggle(text !== "");
+		el.dataset.mode = cls || "reading";
+	}
+}

@@ -1,0 +1,26 @@
+{
+  "name": "vim-layer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One Vim keyboard layer for all of Obsidian, in any keyboard layout: a which-key leader menu, Reading view keys and link hints, Harpoon, input method switching and .vimrc.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "install-vault": "npm run build && node scripts/install.mjs",
+    "version": "node scripts/version-bump.mjs && git add manifest.json versions.json"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2"
+  },
+  "author": "zulerne",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zulerne/obsidian-vim-layer"
+  }
+}
