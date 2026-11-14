@@ -21,6 +21,8 @@ export const DEFAULT_HINT_SELECTORS = [
 	".markdown-preview-view .task-list-item-checkbox",
 	".markdown-preview-view button",
 	".markdown-embed-link",
+	".markdown-preview-view .callout.is-collapsible > .callout-title",
+	".markdown-preview-view summary",
 ];
 
 export interface VimLayerSettings {

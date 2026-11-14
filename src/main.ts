@@ -3,7 +3,7 @@ import { Harpoon } from "./harpoon";
 import { InputMethodSwitcher } from "./im";
 import { DEFAULT_KEYMAP_YAML, extractYaml, GroupItem, parseKeymap } from "./leader/keymap";
 import { LeaderModal } from "./leader/modal";
-import { ReadingLayer } from "./reading/reading";
+import { DEFAULT_READING_KEYMAP, ReadingLayer } from "./reading/reading";
 import { DEFAULT_HINT_SELECTORS, DEFAULT_SETTINGS, VimLayerSettings, VimLayerSettingTab } from "./settings";
 import { VimModeWatcher } from "./vim-mode";
 import { Vimrc } from "./vimrc";
@@ -82,7 +82,11 @@ export default class VimLayerPlugin extends Plugin {
 		this.settings = { ...DEFAULT_SETTINGS, hintSelectors: [...DEFAULT_HINT_SELECTORS], harpoonFiles: [], ...data };
 	}
 
+	/** Lists left at their defaults are not stored, so new defaults reach existing installs. */
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		const data: Partial<VimLayerSettings> = { ...this.settings };
+		if (data.hintSelectors?.join("\n") === DEFAULT_HINT_SELECTORS.join("\n")) delete data.hintSelectors;
+		if (data.readingKeymap === DEFAULT_READING_KEYMAP) delete data.readingKeymap;
+		await this.saveData(data);
 	}
 }
