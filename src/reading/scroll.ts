@@ -3,17 +3,20 @@ import { App } from "obsidian";
 
 const SELECTORS = [".markdown-preview-view", ".cm-scroller", ".view-content"];
 
+/**
+ * The main scroll area of the active view: the largest visible candidate. A note's hidden editor
+ * (or reading view) and its embeds use the same classes, so the first match is not always the right one.
+ */
 function scroller(app: App): HTMLElement | null {
 	const root = app.workspace.getMostRecentLeaf()?.view?.containerEl ?? activeDocument.body;
-	for (const sel of SELECTORS) {
-		const el = root.querySelector<HTMLElement>(sel);
-		if (el && el.scrollHeight > el.clientHeight) return el;
+	let best: HTMLElement | null = null;
+	for (const el of Array.from(root.querySelectorAll<HTMLElement>(SELECTORS.join(",")))) {
+		if (!el.isShown() || el.clientHeight === 0) continue;
+		const scrollable = el.scrollHeight > el.clientHeight;
+		const bestScrollable = best !== null && best.scrollHeight > best.clientHeight;
+		if (!best || (scrollable && !bestScrollable) || (scrollable === bestScrollable && el.clientHeight > best.clientHeight)) best = el;
 	}
-	for (const sel of SELECTORS) {
-		const el = root.querySelector<HTMLElement>(sel);
-		if (el) return el;
-	}
-	return null;
+	return best;
 }
 
 export function scrollBy(app: App, delta: number): void {
