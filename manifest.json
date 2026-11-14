@@ -1,7 +1,7 @@
 {
 	"id": "vim-layer",
 	"name": "Vim Layer",
-	"version": "0.1.5",
+	"version": "0.1.6",
 	"minAppVersion": "1.8.7",
 	"description": "Vim keys beyond the editor: Space leader menu with key hints, Reading view navigation and link hints, Harpoon-style file marks, .vimrc mappings, Latin layout outside Insert. Any keyboard layout.",
 	"author": "zulerne",
