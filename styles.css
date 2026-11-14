@@ -175,3 +175,9 @@ body {
 	font-size: var(--font-ui-small);
 	padding: var(--size-4-1) 0 var(--size-4-2);
 }
+
+/* Editor jumps: dim the text while labels or the search are active. */
+.cm-content.vim-layer-jump-dim,
+.cm-content.vim-layer-jump-dim * {
+	color: var(--text-faint);
+}

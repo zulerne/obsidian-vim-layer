@@ -4,6 +4,7 @@ Vim keys beyond the editor. Obsidian's Vim mode only works while you edit a note
 
 - **Leader menu**: press `Space` and pick a command from a menu of keys (`Space f` find a file, `Space /` search…), like which-key in Neovim.
 - **Reading view keys**: `j`/`k` to scroll, `f` to put letter labels on links and click them from the keyboard, `J`/`K` to switch tabs, `i` to start editing and `Esc` to go back to reading.
+- **Jumps**: in the editor, `s` + two characters puts labels on the matches and `S` puts a label on every word; type a label to move the cursor there, like flash.nvim and hop.
 - **File marks**: pin a few files and jump to them with `Space 1`…`Space 4`, like Harpoon in Neovim.
 - **Layout switching**: Latin layout in Normal mode, your own layout back when you type in Insert mode.
 - **.vimrc**: your own Vim mappings for the editor, including mappings that run Obsidian commands.
@@ -22,6 +23,12 @@ Desktop only.
    unmap <Space>
    exmap leader obcommand vim-layer:leader
    nmap <Space> :leader<CR>
+
+   " Jumps: s + 2 characters, S = every word
+   exmap flash obcommand vim-layer:jump-to-chars
+   nmap s :flash<CR>
+   exmap hop obcommand vim-layer:jump-to-word
+   nmap S :hop<CR>
    ```
 
    Then run **Vim Layer: Reload vimrc** from the command palette, or restart Obsidian. Files starting with a dot are hidden in Obsidian, so create it with any text editor.
@@ -129,6 +136,21 @@ Vim Layer's own actions can go anywhere a command ID goes (hotkeys, the leader m
 | Hint characters | `sadfjklewcmpgh` | Letters for labels, most convenient first |
 | Hint targets | links, buttons, tabs, file tree… | CSS selectors of elements that get a label |
 
+## Jumps
+
+Two commands for the editor, usually mapped to `s` and `S` in `.obsidian.vimrc` (see [Quick start](#quick-start)):
+
+| Command | ID | What happens |
+|---|---|---|
+| Jump to characters | `vim-layer:jump-to-chars` | Type 2 characters of the target (the text dims while you type); every match on screen gets a label. A single match is jumped to at once. |
+| Jump to word | `vim-layer:jump-to-word` | Every word on screen gets a label right away. |
+
+Type the label to move the cursor; hold Shift on its last letter to select from the cursor instead. Labels closest to the cursor are the shortest. `Esc`, a click or scrolling cancels.
+
+**Any layout, no switching.** Labels are shown in the letters of the current layout (Cyrillic labels on a Russian layout) and can be typed in any layout. In Jump to characters each key matches what it types in both layouts: on a Latin layout, the key with `d`/`в` finds both «d» and «в». The second layout is learned the first time you type in it, for example in Insert mode.
+
+Settings (**Settings → Vim Layer → Jumps**): characters to type (1–3, default 2), case sensitivity, and the word pattern for Jump to word (default: 3 or more letters, digits or `_` in any language).
+
 ## File marks (Harpoon)
 
 A short numbered list of files (up to 9). Jumping back to a file puts you where you left it.
@@ -184,7 +206,7 @@ Built in: `]]`/`[[` next/previous heading, `gl`/`gL` next/previous link, `gf` fo
 
 ## Coming from other plugins
 
-Vim Layer covers Spacekeys, Vimium+, Harpoon, Vim IM Control and Vimrc Support and reads the same files: the Spacekeys keymap, the Harpoon list and `.obsidian.vimrc`. Turn the old plugin off when you switch. Until you do, the matching part of Vim Layer stays off (Vimium+, Vim IM Control, Vimrc Support), so keys are not handled twice. In a Spacekeys keymap, replace `spacekeys:leader` with `vim-layer:leader` and `harpoon:…` commands with the `vim-layer:harpoon-…` ones.
+Vim Layer covers Spacekeys, Vimium+, Harpoon, Vim IM Control, Vimrc Support and the editor jumps of Jump to link, and reads the same files: the Spacekeys keymap, the Harpoon list and `.obsidian.vimrc`. For Jump to link, map `s`/`S` to `vim-layer:jump-to-chars`/`vim-layer:jump-to-word` instead of `mrj-jump-to-link:activate-lightspeed-jump`/`activate-jump-to-anywhere`. Turn the old plugin off when you switch. Until you do, the matching part of Vim Layer stays off (Vimium+, Vim IM Control, Vimrc Support), so keys are not handled twice. In a Spacekeys keymap, replace `spacekeys:leader` with `vim-layer:leader` and `harpoon:…` commands with the `vim-layer:harpoon-…` ones.
 
 Not carried over: the Web viewer keys and shell commands of Vimium+; `jscommand`, `jsfile`, `sendkeys` and `surround` of Vimrc Support.
 

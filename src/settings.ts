@@ -42,6 +42,12 @@ export interface VimLayerSettings {
 	enableVimMode: boolean;
 	showModeIndicator: boolean;
 
+	jumpCharCount: number;
+	jumpCaseSensitive: boolean;
+	jumpWordRegex: string;
+	/** A non-Latin layout seen while typing: physical key code → character. */
+	jumpAltLayout: Record<string, string>;
+
 	harpoonFiles: HarpoonEntry[];
 	harpoonImported: boolean;
 
@@ -71,6 +77,11 @@ export const DEFAULT_SETTINGS: VimLayerSettings = {
 	escapeToReading: true,
 	enableVimMode: false,
 	showModeIndicator: true,
+
+	jumpCharCount: 2,
+	jumpCaseSensitive: false,
+	jumpWordRegex: "[\\p{L}\\p{N}_]{3,}",
+	jumpAltLayout: {},
 
 	harpoonFiles: [],
 	harpoonImported: false,
@@ -253,6 +264,40 @@ export class VimLayerSettingTab extends PluginSettingTab {
 		toggle("Esc returns to Reading view", "Esc in Vim Normal mode (nothing pending) leaves the editor.", "escapeToReading");
 		toggle("Turn on Vim mode", "Turns on Obsidian's Vim key bindings in the editor while Vim Layer runs.", "enableVimMode");
 		toggle("Mode indicator", "READING / NORMAL / INSERT / VISUAL in the status bar.", "showModeIndicator");
+
+		// ---- Jumps ----
+		new Setting(containerEl).setName("Jumps").setHeading();
+		new Setting(containerEl)
+			.setName("Characters to type")
+			.setDesc("Jump to characters: how many characters to type before the labels appear.")
+			.addDropdown((d) =>
+				d
+					.addOptions({ "1": "1", "2": "2", "3": "3" })
+					.setValue(String(s.jumpCharCount))
+					.onChange(async (v) => {
+						s.jumpCharCount = Number(v);
+						await save();
+					}),
+			);
+		new Setting(containerEl)
+			.setName("Case sensitive")
+			.setDesc("Jump to characters: match upper and lower case exactly.")
+			.addToggle((t) =>
+				t.setValue(s.jumpCaseSensitive).onChange(async (v) => {
+					s.jumpCaseSensitive = v;
+					await save();
+				}),
+			);
+		new Setting(containerEl)
+			.setName("Word pattern")
+			.setDesc("Jump to word: a regular expression for what counts as a word. The default is 3 or more letters, digits or _ in any language.")
+			.addText((t) => {
+				t.inputEl.addClass("vim-layer-setting-code");
+				t.setValue(s.jumpWordRegex).onChange(async (v) => {
+					s.jumpWordRegex = v.trim() || DEFAULT_SETTINGS.jumpWordRegex;
+					await save();
+				});
+			});
 
 		// ---- Harpoon ----
 		new Setting(containerEl).setName("Harpoon").setHeading();

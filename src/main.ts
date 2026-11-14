@@ -2,6 +2,7 @@ import { normalizePath, Notice, Plugin, TAbstractFile } from "obsidian";
 import { CommandIdModal } from "./command-id";
 import { Harpoon } from "./harpoon";
 import { InputMethodSwitcher } from "./im";
+import { Jump } from "./jump";
 import { DEFAULT_KEYMAP_YAML, extractYaml, GroupItem, parseKeymap } from "./leader/keymap";
 import { LeaderModal } from "./leader/modal";
 import { DEFAULT_READING_KEYMAP, ReadingLayer } from "./reading/reading";
@@ -17,6 +18,7 @@ export default class VimLayerPlugin extends Plugin {
 	harpoon!: Harpoon;
 	im!: InputMethodSwitcher;
 	vimrc!: Vimrc;
+	jump!: Jump;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -27,6 +29,9 @@ export default class VimLayerPlugin extends Plugin {
 		this.addCommand({ id: "reload-leader-keymap", name: "Reload leader keymap", callback: () => void this.loadLeaderKeymap(false) });
 
 		this.vimMode = new VimModeWatcher(this);
+		// Before the Reading view layer, so its key handler sees Esc first while a jump is active.
+		this.jump = new Jump(this);
+		this.jump.load();
 		this.reading = new ReadingLayer(this);
 		this.reading.load();
 		this.harpoon = new Harpoon(this);
