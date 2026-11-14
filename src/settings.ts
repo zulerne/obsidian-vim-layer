@@ -30,6 +30,8 @@ export interface VimLayerSettings {
 
 	leaderKeymapPath: string;
 	leaderDelay: number;
+	/** Show which keys can follow g, z, [ and ] in the editor. */
+	vimKeyHints: boolean;
 
 	readingEnabled: boolean;
 	readingKeymap: string;
@@ -66,6 +68,7 @@ export const DEFAULT_SETTINGS: VimLayerSettings = {
 
 	leaderKeymapPath: "",
 	leaderDelay: 300,
+	vimKeyHints: true,
 
 	readingEnabled: true,
 	readingKeymap: DEFAULT_READING_KEYMAP,
@@ -150,12 +153,22 @@ export class VimLayerSettingTab extends PluginSettingTab {
 			.addButton((b) => b.setButtonText("Reload").onClick(() => void p.loadLeaderKeymap(false)));
 		new Setting(containerEl)
 			.setName("Hint delay")
-			.setDesc("Milliseconds before the menu lists the keys. 0 lists them at once.")
+			.setDesc("Milliseconds before the leader menu and the editor key hints list the keys. 0 lists them at once.")
 			.addText((t) =>
 				t.setValue(String(s.leaderDelay)).onChange(async (v) => {
 					const n = Number(v);
 					if (!Number.isFinite(n) || n < 0) return;
 					s.leaderDelay = Math.round(n);
+					await save();
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName("Key hints")
+			.setDesc("After a key that starts a sequence (g, z, [ or ] in Vim Normal mode; g and other prefixes of your Reading view bindings), list the keys that can follow. Uses the hint delay above.")
+			.addToggle((t) =>
+				t.setValue(s.vimKeyHints).onChange(async (v) => {
+					s.vimKeyHints = v;
 					await save();
 				}),
 			);

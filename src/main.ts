@@ -1,5 +1,6 @@
 import { normalizePath, Notice, Plugin, TAbstractFile } from "obsidian";
 import { CommandIdModal } from "./command-id";
+import { EditorLayout } from "./editor-layout";
 import { Harpoon } from "./harpoon";
 import { InputMethodSwitcher } from "./im";
 import { Jump } from "./jump";
@@ -7,6 +8,7 @@ import { DEFAULT_KEYMAP_YAML, extractYaml, GroupItem, parseKeymap } from "./lead
 import { LeaderModal } from "./leader/modal";
 import { DEFAULT_READING_KEYMAP, ReadingLayer } from "./reading/reading";
 import { DEFAULT_HINT_SELECTORS, DEFAULT_SETTINGS, VimLayerSettings, VimLayerSettingTab } from "./settings";
+import { VimKeyHints } from "./vim-hints";
 import { VimModeWatcher } from "./vim-mode";
 import { Vimrc } from "./vimrc";
 
@@ -19,6 +21,7 @@ export default class VimLayerPlugin extends Plugin {
 	im!: InputMethodSwitcher;
 	vimrc!: Vimrc;
 	jump!: Jump;
+	keyHints!: VimKeyHints;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -28,6 +31,8 @@ export default class VimLayerPlugin extends Plugin {
 		this.addCommand({ id: "copy-command-id", name: "Copy command ID", callback: () => new CommandIdModal(this.app).open() });
 		this.addCommand({ id: "reload-leader-keymap", name: "Reload leader keymap", callback: () => void this.loadLeaderKeymap(false) });
 
+		// First keydown handler: tracks the keyboard layout for everything below.
+		new EditorLayout(this).load();
 		this.vimMode = new VimModeWatcher(this);
 		// Before the Reading view layer, so its key handler sees Esc first while a jump is active.
 		this.jump = new Jump(this);
@@ -40,6 +45,8 @@ export default class VimLayerPlugin extends Plugin {
 		this.im.load();
 		this.vimrc = new Vimrc(this);
 		this.vimrc.load();
+		this.keyHints = new VimKeyHints(this);
+		this.keyHints.load();
 
 		this.app.workspace.onLayoutReady(async () => {
 			await this.loadLeaderKeymap(true);

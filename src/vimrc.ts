@@ -40,6 +40,8 @@ function jumpToHeading(cm: CmAdapter, head: Pos, repeat: number, dir: "next" | "
 export class Vimrc {
 	private loaded = false;
 	private leader = "\\";
+	/** Normal-mode mappings from the vimrc with a readable description, for the key hints. */
+	private mappings = new Map<string, string>();
 	private clipboardSync = false;
 	private lastYank = "";
 	private lastClipboard = "";
@@ -74,14 +76,13 @@ export class Vimrc {
 		const vim = vimApi();
 		const cm = this.editorCm();
 		if (!vim || !cm) return;
-		// Another loader (Vimrc Support in an earlier session) already ran: do not stack mappings.
-		if (vim.loadedVimrc) {
-			this.loaded = true;
-			return;
-		}
 		this.loaded = true;
-		vim.loadedVimrc = true;
+		void this.readMappings();
+		// Commands and motions belong to this plugin instance, so define them on every load.
 		this.defineCommands(vim);
+		// Vim's mappings outlive a plugin reload: run the file only once per app session.
+		if (vim.loadedVimrc) return;
+		vim.loadedVimrc = true;
 		await this.runFile(vim, cm, this.plugin.settings.vimrcPath, true);
 	}
 
@@ -103,10 +104,52 @@ export class Vimrc {
 			this.defineCommands(vim);
 		}
 		vim.mapclear?.();
+		// mapclear also drops the built-in motions (]] [[ gl gL gf); map them again.
+		this.mapBuiltins(vim);
 		this.leader = "\\";
 		this.clipboardSync = false;
 		const errors = await this.runFile(vim, cm, this.plugin.settings.vimrcPath, false);
+		await this.readMappings();
 		if (!errors) new Notice(`Vim Layer: reloaded ${this.plugin.settings.vimrcPath}`);
+	}
+
+	userMappings(): ReadonlyMap<string, string> {
+		return this.mappings;
+	}
+
+	/** Describe the vimrc's normal-mode mappings: ":grep<CR>" with "exmap grep obcommand omnisearch:show-modal" → the command's name. */
+	private async readMappings(): Promise<void> {
+		let text: string;
+		try {
+			text = await this.plugin.app.vault.adapter.read(this.plugin.settings.vimrcPath);
+		} catch {
+			return;
+		}
+		let leader = "\\";
+		const exmaps = new Map<string, string>();
+		const maps: [string, string][] = [];
+		for (const raw of text.split("\n")) {
+			const line = raw.trim();
+			const lead = /^let\s+mapleader\s*=\s*["'](.+?)["']$/i.exec(line);
+			if (lead) leader = lead[1];
+			const ex = /^exmap\s+(\S+)\s+(.+)$/.exec(line);
+			if (ex) exmaps.set(ex[1], ex[2]);
+			const map = /^(?:n?map|n?noremap)\s+(?:<silent>\s+)?(\S+)\s+(.+)$/i.exec(line);
+			if (map) maps.push([map[1].replace(/<leader>/gi, leader), map[2]]);
+		}
+		const commands = appCommands(this.plugin.app);
+		const out = new Map<string, string>();
+		for (const [lhs, rhs] of maps) {
+			if (lhs.startsWith("<")) continue;
+			let desc = rhs;
+			const exName = /^:(\S+?)<CR>$/i.exec(rhs)?.[1];
+			const body = exName ? exmaps.get(exName) : undefined;
+			const id = body ? /^obcommand\s+(\S+)$/.exec(body)?.[1] : undefined;
+			if (id) desc = commands.findCommand(id)?.name ?? id;
+			else if (body) desc = `:${body}`;
+			out.set(lhs, desc);
+		}
+		this.mappings = out;
 	}
 
 	/** Returns the number of failed lines. */
@@ -205,10 +248,6 @@ export class Vimrc {
 		vim.defineMotion("vimLayerPrevHeading", (cm: CmAdapter, head: Pos, a: { repeat: number }) => jumpToHeading(cm, head, a.repeat, "previous"));
 		vim.defineMotion("vimLayerNextLink", (cm: CmAdapter, head: Pos, a: { repeat: number }) => jumpToPattern(cm, head, a.repeat, LINK, "next", escaped(cm.getValue())));
 		vim.defineMotion("vimLayerPrevLink", (cm: CmAdapter, head: Pos, a: { repeat: number }) => jumpToPattern(cm, head, a.repeat, LINK, "previous", escaped(cm.getValue())));
-		vim.mapCommand("]]", "motion", "vimLayerNextHeading", undefined, {});
-		vim.mapCommand("[[", "motion", "vimLayerPrevHeading", undefined, {});
-		vim.mapCommand("gl", "motion", "vimLayerNextLink", undefined, {});
-		vim.mapCommand("gL", "motion", "vimLayerPrevLink", undefined, {});
 
 		vim.defineAction("vimLayerFollowLink", () => {
 			const editor = this.plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
@@ -220,7 +259,16 @@ export class Vimrc {
 			this.runObsidianCommand("editor:follow-link");
 			for (let i = 0; i < moved; i++) editor.exec("goLeft");
 		});
+		this.mapBuiltins(vim);
+	}
+
+	private mapBuiltins(vim: VimApi): void {
+		vim.mapCommand("]]", "motion", "vimLayerNextHeading", undefined, {});
+		vim.mapCommand("[[", "motion", "vimLayerPrevHeading", undefined, {});
+		vim.mapCommand("gl", "motion", "vimLayerNextLink", undefined, {});
+		vim.mapCommand("gL", "motion", "vimLayerPrevLink", undefined, {});
 		vim.mapCommand("gf", "action", "vimLayerFollowLink", undefined, {});
+		vim.mapCommand("gx", "action", "vimLayerFollowLink", undefined, {});
 	}
 
 	private async syncClipboard(): Promise<void> {

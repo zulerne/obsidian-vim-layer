@@ -82,6 +82,7 @@ export interface VimRegister {
 export interface VimApi {
 	loadedVimrc?: boolean;
 	handleEx(cm: CmAdapter, line: string): void;
+	handleKey(cm: CmAdapter, key: string, origin?: string): boolean | void;
 	mapclear?(ctx?: string): void;
 	defineOption(name: string, defaultValue: unknown, type: string, aliases: string[], callback: (value?: unknown, cm?: unknown) => void): void;
 	defineEx(name: string, prefix: string, fn: (cm: CmAdapter, params: ExParams) => void): void;

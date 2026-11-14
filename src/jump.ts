@@ -1,7 +1,7 @@
 // Editor jumps, like flash.nvim / hop: labels over visible text, type a label to move the cursor there.
 // "Jump to characters": type a few characters, then a label on each match. "Jump to word": a label on every word.
 import { MarkdownView, Notice } from "obsidian";
-import { eventToKey } from "./keys";
+import { eventToKey, isNonLatinLayout } from "./keys";
 import type VimLayerPlugin from "./main";
 import { hintLabels } from "./reading/hints";
 
@@ -243,23 +243,21 @@ export class Jump {
 		this.refilter();
 	}
 
-	private learning = false;
+	private saveTimer: number | null = null;
 
+	/**
+	 * Remember which character each key types in your non-Latin layout, from the keys you press.
+	 * (The Keyboard API reports Latin characters for a Russian layout on macOS, so it cannot be asked.)
+	 */
 	private learnLayout(e: KeyboardEvent): void {
-		if (this.learning || [...e.key].length !== 1 || isLatin(e.key)) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || [...e.key].length !== 1 || isLatin(e.key)) return;
+		if (!/^(Key[A-Z]|Backquote|BracketLeft|BracketRight|Semicolon|Quote|Comma|Period)$/.test(e.code)) return;
+		const ch = e.key.toLowerCase();
 		const known = this.plugin.settings.jumpAltLayout;
-		if (known[e.code] === e.key.toLowerCase()) return;
-		this.learning = true;
-		void currentLayout().then(async (layout) => {
-			this.learning = false;
-			if (!layout || isLatin(layout.get("KeyA"))) return;
-			const map: Record<string, string> = {};
-			layout.forEach((value, code) => {
-				if (/^(Key[A-Z]|Backquote|BracketLeft|BracketRight|Semicolon|Quote|Comma|Period|Slash)$/.test(code)) map[code] = value;
-			});
-			this.plugin.settings.jumpAltLayout = map;
-			await this.plugin.saveSettings();
-		});
+		if (known[e.code] === ch) return;
+		this.plugin.settings.jumpAltLayout = { ...known, [e.code]: ch };
+		if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
+		this.saveTimer = window.setTimeout(() => void this.plugin.saveSettings(), 2000);
 	}
 
 	/**
@@ -278,9 +276,9 @@ export class Jump {
 
 	/** Labels are typed by key position; with a non-Latin layout they are shown in that layout's letters. */
 	private display(label: string): string {
-		const layout = this.layout;
-		if (!layout || isLatin(layout.get("KeyA"))) return label;
-		return [...label].map((ch) => (/^[a-z]$/.test(ch) ? (layout.get(`Key${ch.toUpperCase()}`) ?? ch) : ch)).join("");
+		if (!isNonLatinLayout()) return label;
+		const alt = this.plugin.settings.jumpAltLayout;
+		return [...label].map((ch) => (/^[a-z]$/.test(ch) ? (alt[`Key${ch.toUpperCase()}`] ?? ch) : ch)).join("");
 	}
 
 	private refilter(): void {

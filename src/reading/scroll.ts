@@ -19,16 +19,39 @@ function scroller(app: App): HTMLElement | null {
 	return best;
 }
 
+/** Bumped by every scroll command, so a running scroll-to-bottom stops when you scroll elsewhere. */
+let scrollRun = 0;
+
 export function scrollBy(app: App, delta: number): void {
+	scrollRun++;
 	scroller(app)?.scrollBy({ top: delta });
 }
 
 export function scrollHalfPage(app: App, direction: 1 | -1): void {
+	scrollRun++;
 	const el = scroller(app);
 	if (el) el.scrollBy({ top: (direction * el.clientHeight) / 2 });
 }
 
 export function scrollToEdge(app: App, edge: "top" | "bottom"): void {
+	const run = ++scrollRun;
 	const el = scroller(app);
-	if (el) el.scrollTo({ top: edge === "top" ? 0 : el.scrollHeight });
+	if (!el) return;
+	if (edge === "top") {
+		el.scrollTo({ top: 0 });
+		return;
+	}
+	// Reading view renders long notes lazily: the note grows after you reach its end, so follow it until the height settles.
+	let tries = 0;
+	let stable = 0;
+	let height = -1;
+	const step = () => {
+		if (run !== scrollRun) return;
+		// Plain assignment: scrollTo() stops short here while the note is still being rendered.
+		el.scrollTop = el.scrollHeight;
+		stable = el.scrollHeight === height ? stable + 1 : 0;
+		height = el.scrollHeight;
+		if (++tries < 20 && stable < 3) window.setTimeout(step, 50);
+	};
+	step();
 }

@@ -3,7 +3,7 @@
 import { MarkdownView, View, WorkspaceLeaf } from "obsidian";
 import { eventToKey, parseKey } from "../keys";
 import type VimLayerPlugin from "../main";
-import { cmOf, isPluginEnabled, runCommand, vaultConfig } from "../obsidian-internal";
+import { appCommands, cmOf, isPluginEnabled, runCommand, vaultConfig } from "../obsidian-internal";
 import { HintEngine } from "./hints";
 import { collectBookmarks, collectRecentFiles, OmniModal } from "./omnibar";
 import { scrollBy, scrollHalfPage, scrollToEdge } from "./scroll";
@@ -21,6 +21,8 @@ f vim-layer:hints
 F vim-layer:hints-new-tab
 i vim-layer:edit
 / editor:open-search
+n vim-layer:search-next
+N vim-layer:search-previous
 J workspace:next-tab
 K workspace:previous-tab
 t workspace:new-tab
@@ -185,8 +187,23 @@ export class ReadingLayer {
 			["bookmarks", "Open bookmark", () => new OmniModal(app, collectBookmarks(app), false, false).open()],
 			["bookmarks-new-tab", "Open bookmark in new tab", () => new OmniModal(app, collectBookmarks(app), true, false).open()],
 			["omnibar", "Open bookmark, recent file or URL in new tab", () => this.openOmnibar()],
+			["search-next", "Next match of the note search", () => this.searchStep("next")],
+			["search-previous", "Previous match of the note search", () => this.searchStep("previous")],
 		];
 		for (const [id, name, callback] of cmds) plugin.addCommand({ id, name, callback });
+	}
+
+	/** The note search bar (/) of the active note, if it is open. */
+	private searchBar(): HTMLElement | null {
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		const bar = view?.containerEl.querySelector<HTMLElement>(".document-search-container");
+		return bar && bar.isShown() ? bar : null;
+	}
+
+	private searchStep(dir: "next" | "previous"): void {
+		const buttons = this.searchBar()?.querySelectorAll<HTMLElement>(".document-search-button");
+		// Obsidian's bar has Previous, then Next.
+		buttons?.[dir === "next" ? 1 : 0]?.click();
 	}
 
 	private openOmnibar(): void {
@@ -216,6 +233,11 @@ export class ReadingLayer {
 			e.stopPropagation();
 			return;
 		}
+		if (this.handleSearchKey(e)) {
+			e.preventDefault();
+			e.stopPropagation();
+			return;
+		}
 		if (!this.inReadingContext() || isEditableTarget()) return;
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const key = eventToKey(e, this.plugin.settings.keyMode);
@@ -224,6 +246,30 @@ export class ReadingLayer {
 			e.preventDefault();
 			e.stopPropagation();
 		}
+	}
+
+	/**
+	 * Note search in Reading view, Vim style: Enter in the search field keeps the first match and leaves the field,
+	 * so n / N step through matches; Esc outside the field closes the search.
+	 */
+	private handleSearchKey(e: KeyboardEvent): boolean {
+		if (e.ctrlKey || e.metaKey || e.altKey) return false;
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view || view.getMode() !== "preview") return false;
+		const bar = this.searchBar();
+		if (!bar) return false;
+		const target = activeDocument.activeElement;
+		if (e.key === "Enter" && !e.shiftKey && target?.instanceOf(HTMLInputElement) && bar.contains(target)) {
+			target.blur();
+			// Obsidian has already moved to the next match on this Enter; Vim stays on the first one.
+			this.searchStep("previous");
+			return true;
+		}
+		if (e.key === "Escape" && !bar.contains(target)) {
+			bar.querySelector<HTMLElement>(".document-search-close-button")?.click();
+			return true;
+		}
+		return false;
 	}
 
 	/** Reading view of a note, or an empty tab. */
@@ -268,11 +314,16 @@ export class ReadingLayer {
 		if (extendable) {
 			this.clearPending();
 			this.pending = candidate;
-			this.pendingTimer = window.setTimeout(() => {
-				this.pending = [];
-				this.pendingTimer = null;
-				if (exact) this.run(exact.command);
-			}, CHORD_TIMEOUT_MS);
+			// Like Vim: wait for the next key, unless the keys so far are a binding of their own.
+			if (exact) {
+				this.pendingTimer = window.setTimeout(() => {
+					this.pending = [];
+					this.pendingTimer = null;
+					this.plugin.keyHints.hide();
+					this.run(exact.command);
+				}, CHORD_TIMEOUT_MS);
+			}
+			this.showPendingHints(candidate);
 			return true;
 		}
 		this.clearPending();
@@ -284,7 +335,17 @@ export class ReadingLayer {
 		return hadPending ? this.feedKey(key) : false;
 	}
 
+	private showPendingHints(prefix: string[]): void {
+		const label = (keys: string[]) => keys.map((k) => ([...k].length === 1 ? k : `<${k}>`)).join("");
+		const commands = appCommands(this.plugin.app);
+		const entries: [string, string][] = this.bindings
+			.filter((b) => b.keys.length > prefix.length && b.keys.slice(0, prefix.length).join(" ") === prefix.join(" "))
+			.map((b) => [label(b.keys), commands.findCommand(b.command)?.name ?? b.command]);
+		this.plugin.keyHints.showLater(label(prefix), entries);
+	}
+
 	private clearPending(): void {
+		if (this.pending.length) this.plugin.keyHints?.hide();
 		this.pending = [];
 		if (this.pendingTimer !== null) window.clearTimeout(this.pendingTimer);
 		this.pendingTimer = null;

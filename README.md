@@ -8,8 +8,9 @@ Vim keys beyond the editor. Obsidian's Vim mode only works while you edit a note
 - **File marks**: pin a few files and jump to them with `Space 1`…`Space 4`, like Harpoon in Neovim.
 - **Layout switching**: Latin layout in Normal mode, your own layout back when you type in Insert mode.
 - **.vimrc**: your own Vim mappings for the editor, including mappings that run Obsidian commands.
+- **Key hints**: after `g`, `z`, `[` or `]` in the editor, or `g` in Reading view, a bar lists the keys that can follow, your own mappings included.
 
-Everything works in any keyboard layout: keys are matched by their position on a QWERTY keyboard, so `j` also scrolls when a Cyrillic or Greek layout is on.
+Everything works in any keyboard layout: keys are matched by their position on a QWERTY keyboard, so `j` also scrolls when a Cyrillic or Greek layout is on. In Vim Normal and Visual mode every key goes to Vim by its position: capitals (`Ы` is `S`, `П` is `G`) and punctuation too, so on a Russian layout the `/` key (which types `.`) opens search and `Shift+4` is `$`. The character after `f`, `t`, `r`, `m` and similar stays as typed, so `fа` finds a Cyrillic «а». Insert mode types as usual. Obsidian's own Vim mode only understands lowercase Cyrillic letters.
 
 Desktop only.
 
@@ -99,7 +100,7 @@ The keys work while a note is in Reading view (or a tab is empty) and no text fi
 | `gg` / `G` | Top / bottom |
 | `f` | Letter labels on links, buttons and collapsible callouts; type a label to click it |
 | `F`, or Shift on the last letter | Same, opening links in a new tab |
-| `/` | Search in the note |
+| `/` | Search in the note: type, `Enter` to stay on the first match, then `n` / `N` for the next / previous one; `Esc` closes |
 | `J` / `K` | Next / previous tab |
 | `t` / `x` / `X` | New tab / close tab / reopen closed tab |
 | `H` / `L` | Back / forward |
@@ -111,6 +112,8 @@ The keys work while a note is in Reading view (or a tab is empty) and no text fi
 
 In the editor, `Esc` in Vim Normal mode returns to Reading view (from Insert mode, press `Esc` twice).
 
+After the first key of a sequence (`g` of `gg` or `g/`), Vim Layer waits for the next key like Vim does, and after the hint delay a bar lists what can follow, with command names. `Esc` cancels.
+
 ### Change the keys
 
 **Settings → Vim Layer → Key bindings** holds every binding, one per line: the keys, then a command ID. Keys are written like in the leader keymap and separated by spaces (`g g`). A later line wins; `-` instead of a command removes a key. ↺ restores the defaults.
@@ -121,7 +124,7 @@ g / omnisearch:show-modal     # add a two-key sequence
 x -                           # remove x
 ```
 
-Vim Layer's own actions can go anywhere a command ID goes (hotkeys, the leader menu): `vim-layer:scroll-down`, `scroll-up`, `scroll-half-page-down`, `scroll-half-page-up`, `scroll-to-top`, `scroll-to-bottom`, `hints`, `hints-new-tab`, `edit`, `read`, `bookmarks`, `bookmarks-new-tab`, `omnibar`.
+Vim Layer's own actions can go anywhere a command ID goes (hotkeys, the leader menu): `vim-layer:scroll-down`, `scroll-up`, `scroll-half-page-down`, `scroll-half-page-up`, `scroll-to-top`, `scroll-to-bottom`, `hints`, `hints-new-tab`, `edit`, `read`, `bookmarks`, `bookmarks-new-tab`, `omnibar`, `search-next`, `search-previous`.
 
 ### Other settings
 
@@ -202,7 +205,11 @@ Vim Layer runs `.obsidian.vimrc` from the vault root (**Settings → Vim Layer �
 | `set tabstop=4` | Tab width |
 | `source other.vimrc` | Run another file |
 
-Built in: `]]`/`[[` next/previous heading, `gl`/`gL` next/previous link, `gf` follow the link under the cursor.
+Built in: `]]`/`[[` next/previous heading (any level), `gl`/`gL` next/previous link, `gf` or `gx` follow the link under the cursor (notes and web links).
+
+### Key hints
+
+After `g`, `z`, `[` or `]` in Normal or Visual mode, a bar at the bottom lists the keys that can follow: Vim's own commands, the motions above and your vimrc mappings, described by the Obsidian command they run (`g/` → *Omnisearch: Vault search*). It appears after the leader menu's **Hint delay**, so it stays out of the way when you type fast. Turn it off with **Settings → Vim Layer → Key hints** (this also turns off the Reading view hints).
 
 ## Coming from other plugins
 

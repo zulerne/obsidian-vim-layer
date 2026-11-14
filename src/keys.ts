@@ -111,6 +111,43 @@ export function parseKey(raw: string): string | null {
  */
 export type KeyMode = "auto" | "physical" | "typed";
 
+// Whether the active keyboard layout is non-Latin (Cyrillic, Greek…). Its punctuation sits on other keys
+// ("/" types "." on a Russian layout), so in such a layout every key is read by position.
+let nonLatinLayout = false;
+
+export function isNonLatinLayout(): boolean {
+	return nonLatinLayout;
+}
+
+/** Update the layout guess from a letter key: what it typed tells which layout is on. */
+export function trackLayout(e: KeyboardEvent): void {
+	if (e.ctrlKey || e.metaKey || e.altKey || !/^Key[A-Z]$/.test(e.code) || !isChar(e.key)) return;
+	nonLatinLayout = e.key.charCodeAt(0) > 0x7e;
+}
+
+/** Ask the system for the current layout (Chromium Keyboard API), for keys pressed before any letter. */
+export async function refreshLayout(): Promise<void> {
+	const keyboard = (navigator as unknown as { keyboard?: { getLayoutMap?: () => Promise<{ get(code: string): string | undefined }> } }).keyboard;
+	try {
+		const a = (await keyboard?.getLayoutMap?.())?.get("KeyA");
+		// Only ever switch on: some systems report Latin characters for a non-Latin layout, and a typed letter
+		// switches it off anyway. On a US layout a stale "on" changes nothing, since keys already sit where QWERTY has them.
+		if (a && a.charCodeAt(0) > 0x7e) nonLatinLayout = true;
+	} catch {
+		// Not available: keep the guess from typed letters.
+	}
+}
+
+/** The US-QWERTY character of the pressed key, or null for keys without one. */
+export function qwertyChar(e: KeyboardEvent): string | null {
+	if (/^Key[A-Z]$/.test(e.code)) {
+		const c = e.code.slice(3);
+		return e.shiftKey ? c : c.toLowerCase();
+	}
+	const pair = CODE_CHARS[e.code];
+	return pair ? pair[e.shiftKey ? 1 : 0] : null;
+}
+
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Dead", "Process", "Unidentified"]);
 
 /** Convert a keyboard event to a canonical key code. Returns null for bare modifiers. */
@@ -128,16 +165,10 @@ export function eventToKey(evt: KeyboardEvent, mode: KeyMode): string | null {
 	}
 
 	let ch: string | null = null;
-	const code = evt.code || "";
 	const nonLatin = isChar(evt.key) && evt.key.charCodeAt(0) > 0x7e;
 	// Alt on macOS produces special characters, so it always uses the key position.
-	if (mode === "physical" || (mode === "auto" && nonLatin) || evt.altKey) {
-		if (/^Key[A-Z]$/.test(code)) {
-			const c = code.slice(3);
-			ch = evt.shiftKey ? c : c.toLowerCase();
-		} else if (CODE_CHARS[code]) {
-			ch = CODE_CHARS[code][evt.shiftKey ? 1 : 0];
-		}
+	if (mode === "physical" || (mode === "auto" && (nonLatin || nonLatinLayout)) || evt.altKey) {
+		ch = qwertyChar(evt);
 	}
 	if (ch === null) {
 		if (!isChar(evt.key)) return null;

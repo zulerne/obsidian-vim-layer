@@ -181,3 +181,20 @@ body {
 .cm-content.vim-layer-jump-dim * {
 	color: var(--text-faint);
 }
+
+/* Editor key hints after g, z, [ and ]: the leader bar, without a modal. */
+.vim-layer-leader.vim-layer-keyhints {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: var(--layer-notice);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	max-height: var(--vim-layer-leader-max-height);
+	padding: var(--size-4-2) var(--size-4-3);
+	background: var(--modal-background);
+	border-top: var(--modal-border-width) solid var(--modal-border-color);
+	pointer-events: none;
+}
