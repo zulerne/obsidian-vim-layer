@@ -10,7 +10,7 @@ Vim keys beyond the editor. Obsidian's Vim mode only works while you edit a note
 - **.vimrc**: your own Vim mappings for the editor, including mappings that run Obsidian commands.
 - **Key hints**: after `g`, `z`, `[` or `]` in the editor, or `g` in Reading view, a bar lists the keys that can follow, your own mappings included.
 
-Everything works in any keyboard layout: keys are matched by their position on a QWERTY keyboard, so `j` also scrolls when a Cyrillic or Greek layout is on. In Vim Normal and Visual mode every key goes to Vim by its position: capitals (`Ы` is `S`, `П` is `G`) and punctuation too, so on a Russian layout the `/` key (which types `.`) opens search and `Shift+4` is `$`. The character after `f`, `t`, `r`, `m` and similar stays as typed, so `fа` finds a Cyrillic «а». Insert mode types as usual. Obsidian's own Vim mode only understands lowercase Cyrillic letters.
+Everything works in any keyboard layout: keys are matched by their position on a QWERTY keyboard, so `j` also scrolls when a Cyrillic or Greek layout is on. In Vim Normal and Visual mode every key works by its position: Vim Layer learns your layout as you type and sets Vim's `langmap` from it, so letters and punctuation keys (`ж` is `;`, `б` is `,`) do what they do on QWERTY. Punctuation that types another Latin character is sent by position too: on a Russian layout the `/` key (which types `.`) opens search and `Shift+4` is `$`. The character after `f`, `t`, `r` and similar stays as typed, so `fа` finds a Cyrillic «а». Insert mode types as usual. A `langmap` set in your vimrc takes precedence.
 
 Desktop only.
 
@@ -176,7 +176,7 @@ When you leave Insert mode, Vim Layer remembers your keyboard layout and switche
 **macOS**
 
 1. Install [macism](https://github.com/laishulu/macism): `brew install laishulu/homebrew/macism`.
-2. **Settings → Vim Layer → Switch input method**: on. The default commands already use macism:
+2. **Settings → Vim Layer → Switch input method**: on. These settings run shell commands, so they are kept on each device and are not synced with the vault. The default commands already use macism:
 
    | Field | Value |
    |---|---|

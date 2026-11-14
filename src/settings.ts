@@ -1,4 +1,4 @@
-import { App, Platform, PluginSettingTab, Setting } from "obsidian";
+import { App, Platform, PluginSettingTab, Setting, SettingDefinitionItem, SettingGroupItem, TextAreaComponent } from "obsidian";
 import type { HarpoonEntry } from "./harpoon";
 import type { KeyMode } from "./keys";
 import type VimLayerPlugin from "./main";
@@ -43,6 +43,9 @@ export interface VimLayerSettings {
 	escapeToReading: boolean;
 	enableVimMode: boolean;
 	showModeIndicator: boolean;
+	/** Obsidian's own values before Vim Layer changed them, restored when the option or the plugin is turned off. */
+	originalDefaultViewMode?: unknown;
+	originalVimMode?: unknown;
 
 	jumpCharCount: number;
 	jumpCaseSensitive: boolean;
@@ -53,15 +56,32 @@ export interface VimLayerSettings {
 	harpoonFiles: HarpoonEntry[];
 	harpoonImported: boolean;
 
+
+	vimrcEnabled: boolean;
+	vimrcPath: string;
+}
+
+/**
+ * Input method switching runs shell commands, so it is kept per device (localStorage), not in data.json:
+ * a synced or shared vault cannot make another machine run commands, and paths differ between systems.
+ */
+export interface ImSettings {
 	imEnabled: boolean;
 	imPath: string;
 	imLeaveCommand: string;
 	imEnterCommand: string;
 	imGetCommand: string;
-
-	vimrcEnabled: boolean;
-	vimrcPath: string;
 }
+
+export const IM_SETTING_KEYS = ["imEnabled", "imPath", "imLeaveCommand", "imEnterCommand", "imGetCommand"] as const;
+
+export const DEFAULT_IM_SETTINGS: ImSettings = {
+	imEnabled: false,
+	imPath: Platform.isMacOS ? "/opt/homebrew/bin" : Platform.isWin ? "" : "/usr/bin",
+	imLeaveCommand: Platform.isMacOS ? "macism com.apple.keylayout.ABC" : Platform.isWin ? "im-select.exe 1033" : "fcitx5-remote -c",
+	imEnterCommand: Platform.isMacOS ? "macism {{im}}" : Platform.isWin ? "im-select.exe {{im}}" : "fcitx5-remote {{im}}",
+	imGetCommand: Platform.isMacOS ? "macism" : Platform.isWin ? "im-select.exe" : "fcitx5-remote | sed 's/^2$/-o/;s/^1$/-c/'",
+};
 
 export const DEFAULT_SETTINGS: VimLayerSettings = {
 	keyMode: "auto",
@@ -89,12 +109,6 @@ export const DEFAULT_SETTINGS: VimLayerSettings = {
 	harpoonFiles: [],
 	harpoonImported: false,
 
-	imEnabled: false,
-	imPath: Platform.isMacOS ? "/opt/homebrew/bin" : Platform.isWin ? "" : "/usr/bin",
-	imLeaveCommand: Platform.isMacOS ? "macism com.apple.keylayout.ABC" : Platform.isWin ? "im-select.exe 1033" : "fcitx5-remote -c",
-	imEnterCommand: Platform.isMacOS ? "macism {{im}}" : Platform.isWin ? "im-select.exe {{im}}" : "fcitx5-remote {{im}}",
-	imGetCommand: Platform.isMacOS ? "macism" : Platform.isWin ? "im-select.exe" : "fcitx5-remote | sed 's/^2$/-o/;s/^1$/-c/'",
-
 	vimrcEnabled: true,
 	vimrcPath: ".obsidian.vimrc",
 };
@@ -106,6 +120,310 @@ export class VimLayerSettingTab extends PluginSettingTab {
 	) {
 		super(app, plugin);
 	}
+
+	// --- Obsidian 1.13+: declarative settings (rendered and searchable by Obsidian) ---
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		const p = this.plugin;
+		const s = () => p.settings;
+		const conflict = (pluginId: string, name: string): SettingGroupItem => ({
+			name: `${name} is enabled`,
+			desc: `This part of Vim Layer stays off while ${name} runs. Disable ${name} to use it.`,
+			searchable: false,
+			visible: () => isPluginEnabled(this.app, pluginId),
+			render: (setting) => setting.settingEl.addClass("vim-layer-setting-conflict"),
+		});
+		const codeArea = (
+			setting: Setting,
+			get: () => string,
+			set: (v: string) => Promise<void>,
+			rows: number,
+			reset: { tooltip: string; value: () => string },
+		) => {
+			let area!: TextAreaComponent;
+			setting.settingEl.addClass("vim-layer-setting-textarea");
+			setting.addTextArea((t) => {
+				area = t;
+				t.inputEl.addClass("vim-layer-setting-code");
+				t.inputEl.rows = rows;
+				t.inputEl.spellcheck = false;
+				t.setValue(get());
+				t.inputEl.addEventListener("blur", () => {
+					if (t.getValue() !== get()) void set(t.getValue());
+				});
+			});
+			setting.addExtraButton((b) =>
+				b
+					.setIcon("rotate-ccw")
+					.setTooltip(reset.tooltip)
+					.onClick(async () => {
+						area.setValue(reset.value());
+						await set(reset.value());
+					}),
+			);
+		};
+		const items: SettingDefinitionItem[] = [
+			{
+				name: "Key layout",
+				desc: "How keys are read in Vim Layer's menus and in Reading view. Auto: Latin layouts use the typed character, other layouts (Cyrillic, Greek…) the key's QWERTY position. Physical: always the QWERTY position. Typed: always the typed character.",
+				control: {
+					type: "dropdown",
+					key: "keyMode",
+					options: { auto: "Auto", physical: "Physical (QWERTY position)", typed: "Typed character" },
+				},
+			},
+			{
+				type: "group",
+				heading: "Leader menu",
+				items: [
+					{
+						name: "Keymap file",
+						desc: "Vault path to a YAML keymap in the Spacekeys format (.yml, or .md with a YAML code block). Empty: built-in keymap. Reloaded on change.",
+						control: { type: "text", key: "leaderKeymapPath", placeholder: "Meta/leader.yml" },
+					},
+					{
+						name: "Reload keymap",
+						desc: "Read the keymap file again and list any problems in it.",
+						render: (setting) => {
+							setting.addButton((b) => b.setButtonText("Reload").onClick(() => void p.loadLeaderKeymap(false)));
+						},
+					},
+					{
+						name: "Hint delay",
+						desc: "Milliseconds before the leader menu and the key hints list the keys. 0 lists them at once.",
+						control: { type: "number", key: "leaderDelay", min: 0, defaultValue: DEFAULT_SETTINGS.leaderDelay },
+					},
+					{
+						name: "Key hints",
+						desc: "After a key that starts a sequence (g, z, [ or ] in Vim Normal mode; g and other prefixes of your Reading view bindings), list the keys that can follow. Uses the hint delay above.",
+						control: { type: "toggle", key: "vimKeyHints" },
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Reading view",
+				items: [
+					conflict("vimium-plus", "Vimium+"),
+					{
+						name: "Vim keys in Reading view",
+						desc: "Scrolling, link hints, tabs and your own bindings while a note is in Reading view or a tab is empty.",
+						control: { type: "toggle", key: "readingEnabled" },
+					},
+					{
+						name: "Key bindings",
+						desc: "One per line: key sequence, then a command ID (g g vim-layer:scroll-to-top). Keys use the leader keymap notation; a later line wins; “-” as the command removes a binding. Saved when the field loses focus.",
+						render: (setting) =>
+							codeArea(
+								setting,
+								() => s().readingKeymap,
+								async (v) => {
+									s().readingKeymap = v;
+									await p.saveSettings();
+									p.reading.reloadKeymap();
+								},
+								14,
+								{ tooltip: "Restore default bindings", value: () => DEFAULT_READING_KEYMAP },
+							),
+					},
+					{ name: "Scroll step", desc: "Pixels per j/k.", control: { type: "number", key: "scrollStep", min: 1, defaultValue: DEFAULT_SETTINGS.scrollStep } },
+					{
+						name: "Hint characters",
+						desc: "Letters for link hint labels, most convenient first.",
+						control: {
+							type: "text",
+							key: "hintChars",
+							validate: (v: string) => (new Set(v.trim()).size > 1 ? undefined : "Use at least two different letters"),
+						},
+					},
+					{
+						name: "Hint targets",
+						desc: "CSS selectors of elements that get a hint, one per line. Saved when the field loses focus.",
+						render: (setting) =>
+							codeArea(
+								setting,
+								() => s().hintSelectors.join("\n"),
+								async (v) => {
+									s().hintSelectors = v.split("\n").map((x) => x.trim()).filter(Boolean);
+									await p.saveSettings();
+								},
+								8,
+								{ tooltip: "Restore default selectors", value: () => DEFAULT_HINT_SELECTORS.join("\n") },
+							),
+					},
+					{ name: "Hint font size", control: { type: "number", key: "hintFontSize", min: 5, defaultValue: DEFAULT_SETTINGS.hintFontSize } },
+					{
+						name: "Open notes in Reading view",
+						desc: "Notes open in Reading view; i edits, Esc returns. Obsidian's own default view mode comes back when turned off.",
+						control: { type: "toggle", key: "forceReadingView" },
+					},
+					{
+						name: "Esc returns to Reading view",
+						desc: "Esc in Vim Normal mode (nothing pending) leaves the editor.",
+						control: { type: "toggle", key: "escapeToReading" },
+					},
+					{
+						name: "Turn on Vim mode",
+						desc: "Turns on Obsidian's Vim key bindings in the editor while Vim Layer runs.",
+						control: { type: "toggle", key: "enableVimMode" },
+					},
+					{
+						name: "Mode indicator",
+						desc: "READING / NORMAL / INSERT / VISUAL in the status bar.",
+						control: { type: "toggle", key: "showModeIndicator" },
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Jumps",
+				items: [
+					{
+						name: "Characters to type",
+						desc: "Jump to characters: how many characters to type before the labels appear.",
+						control: { type: "dropdown", key: "jumpCharCount", options: { "1": "1", "2": "2", "3": "3" } },
+					},
+					{
+						name: "Case sensitive",
+						desc: "Jump to characters: match upper and lower case exactly.",
+						control: { type: "toggle", key: "jumpCaseSensitive" },
+					},
+					{
+						name: "Word pattern",
+						desc: "Jump to word: a regular expression for what counts as a word. The default is 3 or more letters, digits or _ in any language.",
+						control: {
+							type: "text",
+							key: "jumpWordRegex",
+							placeholder: DEFAULT_SETTINGS.jumpWordRegex,
+							validate: (v: string) => {
+								try {
+									new RegExp(v || DEFAULT_SETTINGS.jumpWordRegex, "gu");
+									return undefined;
+								} catch (e) {
+									return e instanceof Error ? e.message : "Invalid regular expression";
+								}
+							},
+						},
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: "Harpoon",
+				items: [
+					{
+						name: "Files",
+						desc: "Commands: Harpoon: add current file, open list, go to file 1–9, remove current file.",
+						render: (setting) => {
+							const fill = () =>
+								setting.setDesc(
+									s().harpoonFiles.length
+										? s().harpoonFiles.map((f, i) => `${i + 1}. ${f.path}`).join("  ·  ")
+										: "Empty. Commands: Harpoon: add current file, open list, go to file 1–9.",
+								);
+							fill();
+							setting.addButton((b) =>
+								b.setButtonText("Clear").onClick(async () => {
+									s().harpoonFiles = [];
+									await p.saveSettings();
+									fill();
+								}),
+							);
+						},
+					},
+				],
+			},
+		];
+		if (Platform.isDesktopApp) {
+			items.push({
+				type: "group",
+				heading: "Input method",
+				items: [
+					conflict("vim-im-control", "Vim IM Control"),
+					{
+						name: "Switch input method",
+						desc: "Leave Insert mode: save the current input method and switch to the one below. Enter Insert mode: switch back. These settings stay on this device and are not synced with the vault.",
+						control: { type: "toggle", key: "imEnabled" },
+					},
+					{ name: "Extra PATH", desc: "Folder with the switcher (macism, im-select, fcitx5-remote).", control: { type: "text", key: "imPath" } },
+					{ name: "On leaving Insert", desc: "Command that switches to the Latin layout.", control: { type: "text", key: "imLeaveCommand" } },
+					{
+						name: "On entering Insert",
+						desc: "Command that restores the saved input method; {{im}} is replaced with it. Empty: do not restore.",
+						control: { type: "text", key: "imEnterCommand" },
+					},
+					{ name: "Get current", desc: "Command that prints the current input method. Empty: do not restore.", control: { type: "text", key: "imGetCommand" } },
+				],
+			});
+		}
+		items.push({
+			type: "group",
+			heading: "Vimrc",
+			items: [
+				conflict("obsidian-vimrc-support", "Vimrc Support"),
+				{
+					name: "Load vimrc",
+					desc: "Run a vimrc file in Obsidian's Vim mode: map / noremap / unmap, exmap, obcommand, let mapleader, set clipboard=unnamed, source. Adds ]] [[ (headings), gl gL (links), gf gx (follow link).",
+					control: { type: "toggle", key: "vimrcEnabled" },
+				},
+				{
+					name: "Vimrc file",
+					desc: "Vault path. Use “Reload vimrc” after editing.",
+					control: { type: "text", key: "vimrcPath", placeholder: DEFAULT_SETTINGS.vimrcPath },
+				},
+				{
+					name: "Reload vimrc",
+					desc: "Clear the mappings and run the vimrc file again.",
+					render: (setting) => {
+							setting.addButton((b) => b.setButtonText("Reload").onClick(() => void p.vimrc.reload()));
+						},
+				},
+			],
+		});
+		return items;
+	}
+
+	getControlValue(key: string): unknown {
+		if ((IM_SETTING_KEYS as readonly string[]).includes(key)) return this.plugin.imSettings()[key as keyof ImSettings];
+		if (key === "jumpCharCount") return String(this.plugin.settings.jumpCharCount);
+		return (this.plugin.settings as unknown as Record<string, unknown>)[key];
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		const p = this.plugin;
+		if ((IM_SETTING_KEYS as readonly string[]).includes(key)) {
+			const im = p.imSettings();
+			(im as unknown as Record<string, unknown>)[key] = typeof value === "string" ? value.trim() : value;
+			p.saveImSettings(im);
+			return;
+		}
+		const settings = p.settings as unknown as Record<string, unknown>;
+		switch (key) {
+			case "jumpCharCount":
+				settings[key] = Number(value);
+				break;
+			case "leaderKeymapPath":
+			case "hintChars":
+				settings[key] = String(value).trim();
+				break;
+			case "jumpWordRegex":
+				settings[key] = String(value).trim() || DEFAULT_SETTINGS.jumpWordRegex;
+				break;
+			case "vimrcPath":
+				settings[key] = String(value).trim() || DEFAULT_SETTINGS.vimrcPath;
+				break;
+			case "leaderDelay":
+				settings[key] = Math.max(0, Math.round(Number(value) || 0));
+				break;
+			default:
+				settings[key] = value;
+		}
+		await p.saveSettings();
+		if (key === "leaderKeymapPath") await p.loadLeaderKeymap(true);
+		if (["readingEnabled", "forceReadingView", "escapeToReading", "enableVimMode", "showModeIndicator"].includes(key)) p.reading.applyConfig();
+	}
+
+	// --- Obsidian < 1.13: imperative fallback ---
 
 	private note(el: HTMLElement, pluginId: string, name: string): void {
 		if (isPluginEnabled(this.app, pluginId)) {
@@ -333,13 +651,17 @@ export class VimLayerSettingTab extends PluginSettingTab {
 		if (Platform.isDesktopApp) {
 			new Setting(containerEl).setName("Input method").setHeading();
 			this.note(containerEl, "vim-im-control", "Vim IM Control");
+			const im = p.imSettings();
+			const saveIm = () => p.saveImSettings(im);
 			new Setting(containerEl)
 				.setName("Switch input method")
-				.setDesc("Leave Insert mode: save the current input method and switch to the one below. Enter Insert mode: switch back.")
+				.setDesc(
+					"Leave Insert mode: save the current input method and switch to the one below. Enter Insert mode: switch back. These settings stay on this device and are not synced with the vault.",
+				)
 				.addToggle((t) =>
-					t.setValue(s.imEnabled).onChange(async (v) => {
-						s.imEnabled = v;
-						await save();
+					t.setValue(im.imEnabled).onChange((v) => {
+						im.imEnabled = v;
+						saveIm();
 					}),
 				);
 			const text = (name: string, desc: string, key: "imPath" | "imLeaveCommand" | "imEnterCommand" | "imGetCommand") =>
@@ -348,9 +670,9 @@ export class VimLayerSettingTab extends PluginSettingTab {
 					.setDesc(desc)
 					.addText((t) => {
 						t.inputEl.addClass("vim-layer-setting-code");
-						t.setValue(s[key]).onChange(async (v) => {
-							s[key] = v.trim();
-							await save();
+						t.setValue(im[key]).onChange((v) => {
+							im[key] = v.trim();
+							saveIm();
 						});
 					});
 			text("Extra PATH", "Folder with the switcher (macism, im-select, fcitx5-remote).", "imPath");

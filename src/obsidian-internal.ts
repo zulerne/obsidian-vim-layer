@@ -58,6 +58,8 @@ export interface CmAdapter {
 export interface VimState {
 	insertMode?: boolean;
 	visualMode?: boolean;
+	/** Set while Vim waits for a literal character (after f, t, r…); langmap is not applied then. */
+	expectLiteralNext?: boolean;
 	inputState?: { keyBuffer?: unknown[]; operator?: unknown; prefixRepeat?: unknown[]; motionRepeat?: unknown[] };
 }
 
@@ -83,6 +85,8 @@ export interface VimApi {
 	loadedVimrc?: boolean;
 	handleEx(cm: CmAdapter, line: string): void;
 	handleKey(cm: CmAdapter, key: string, origin?: string): boolean | void;
+	langmap?(langmap: string, remapCtrl?: boolean): void;
+	getOption?(name: string): unknown;
 	mapclear?(ctx?: string): void;
 	defineOption(name: string, defaultValue: unknown, type: string, aliases: string[], callback: (value?: unknown, cm?: unknown) => void): void;
 	defineEx(name: string, prefix: string, fn: (cm: CmAdapter, params: ExParams) => void): void;

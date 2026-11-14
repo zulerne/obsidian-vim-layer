@@ -14,7 +14,7 @@ export class InputMethodSwitcher {
 	constructor(private readonly plugin: VimLayerPlugin) {}
 
 	get active(): boolean {
-		return Platform.isDesktopApp && this.plugin.settings.imEnabled && !isPluginEnabled(this.plugin.app, "vim-im-control");
+		return Platform.isDesktopApp && this.plugin.imSettings().imEnabled && !isPluginEnabled(this.plugin.app, "vim-im-control");
 	}
 
 	load(): void {
@@ -27,7 +27,7 @@ export class InputMethodSwitcher {
 			// Node is only available on desktop, so child_process is required lazily.
 			this.exec = (require("child_process") as { exec: Exec }).exec;
 		}
-		const extra = this.plugin.settings.imPath.trim();
+		const extra = this.plugin.imSettings().imPath.trim();
 		const sep = Platform.isWin ? ";" : ":";
 		const env = { ...process.env, PATH: extra ? `${process.env.PATH ?? ""}${sep}${extra}` : process.env.PATH };
 		return new Promise((resolve) => {
@@ -40,7 +40,7 @@ export class InputMethodSwitcher {
 
 	private onModeChange(mode: VimMode, prev: VimMode): void {
 		if (!this.active) return;
-		const s = this.plugin.settings;
+		const s = this.plugin.imSettings();
 		if (mode === "insert") {
 			if (s.imEnterCommand && s.imGetCommand && this.saved) void this.run(s.imEnterCommand.replace(/\{\{im\}\}/g, this.saved));
 		} else if (prev === "insert" && s.imLeaveCommand) {

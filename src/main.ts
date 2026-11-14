@@ -7,10 +7,20 @@ import { Jump } from "./jump";
 import { DEFAULT_KEYMAP_YAML, extractYaml, GroupItem, parseKeymap } from "./leader/keymap";
 import { LeaderModal } from "./leader/modal";
 import { DEFAULT_READING_KEYMAP, ReadingLayer } from "./reading/reading";
-import { DEFAULT_HINT_SELECTORS, DEFAULT_SETTINGS, VimLayerSettings, VimLayerSettingTab } from "./settings";
+import {
+	DEFAULT_HINT_SELECTORS,
+	DEFAULT_IM_SETTINGS,
+	DEFAULT_SETTINGS,
+	IM_SETTING_KEYS,
+	ImSettings,
+	VimLayerSettings,
+	VimLayerSettingTab,
+} from "./settings";
 import { VimKeyHints } from "./vim-hints";
 import { VimModeWatcher } from "./vim-mode";
 import { Vimrc } from "./vimrc";
+
+const IM_STORAGE_KEY = "vim-layer-input-method";
 
 export default class VimLayerPlugin extends Plugin {
 	settings: VimLayerSettings = { ...DEFAULT_SETTINGS };
@@ -92,8 +102,28 @@ export default class VimLayerPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const data = (await this.loadData()) as Partial<VimLayerSettings> | null;
+		const data = (await this.loadData()) as (Partial<VimLayerSettings> & Partial<ImSettings>) | null;
 		this.settings = { ...DEFAULT_SETTINGS, hintSelectors: [...DEFAULT_HINT_SELECTORS], harpoonFiles: [], ...data };
+		// 0.1.6 and earlier kept input method settings in data.json; move them to this device.
+		if (data && IM_SETTING_KEYS.some((k) => k in data)) {
+			if (!this.app.loadLocalStorage(IM_STORAGE_KEY)) {
+				const moved: Partial<ImSettings> = {};
+				for (const k of IM_SETTING_KEYS) if (k in data) Object.assign(moved, { [k]: data[k] });
+				this.saveImSettings({ ...DEFAULT_IM_SETTINGS, ...moved });
+			}
+			for (const k of IM_SETTING_KEYS) delete (this.settings as Partial<ImSettings>)[k];
+			await this.saveSettings();
+		}
+	}
+
+	/** Input method settings of this device (localStorage, not synced with the vault). */
+	imSettings(): ImSettings {
+		const stored = this.app.loadLocalStorage(IM_STORAGE_KEY) as Partial<ImSettings> | null;
+		return { ...DEFAULT_IM_SETTINGS, ...stored };
+	}
+
+	saveImSettings(s: ImSettings): void {
+		this.app.saveLocalStorage(IM_STORAGE_KEY, s);
 	}
 
 	/** Lists left at their defaults are not stored, so new defaults reach existing installs. */

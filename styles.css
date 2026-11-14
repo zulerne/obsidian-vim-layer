@@ -198,3 +198,22 @@ body {
 	border-top: var(--modal-border-width) solid var(--modal-border-color);
 	pointer-events: none;
 }
+
+/* Declarative settings (Obsidian 1.13+). */
+.vim-layer-setting-conflict .setting-item-name {
+	color: var(--text-warning);
+}
+
+.vim-layer-setting-textarea {
+	flex-wrap: wrap;
+}
+
+.vim-layer-setting-textarea .setting-item-control {
+	flex: 1 1 100%;
+	align-items: flex-start;
+}
+
+.vim-layer-setting-textarea textarea {
+	flex: 1;
+	min-height: 8em;
+}

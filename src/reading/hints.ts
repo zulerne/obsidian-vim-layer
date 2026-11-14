@@ -150,8 +150,13 @@ export class HintEngine {
 		);
 	}
 
+	/**
+	 * Visible elements matching the selectors, in selector order. Nested matches (a tab header and its inner part)
+	 * would put two labels on one spot, so only the first element at each label position is kept.
+	 */
 	private collectTargets(selectors: string[]): HTMLElement[] {
 		const seen = new Set<Element>();
+		const spots = new Set<string>();
 		const targets: HTMLElement[] = [];
 		for (const selector of selectors) {
 			let nodes: NodeListOf<Element>;
@@ -163,6 +168,10 @@ export class HintEngine {
 			nodes.forEach((node) => {
 				if (!node.instanceOf(HTMLElement) || seen.has(node) || !isVisible(node)) return;
 				seen.add(node);
+				const rect = node.getBoundingClientRect();
+				const spot = `${Math.round(Math.max(0, rect.left))},${Math.round(Math.max(0, rect.top))}`;
+				if (spots.has(spot)) return;
+				spots.add(spot);
 				targets.push(node);
 			});
 		}

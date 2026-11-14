@@ -2,6 +2,7 @@
 // source, and Obsidian motions (]] [[ gl gL gf). Replaces Vimrc Support and reads the same file format.
 import { MarkdownView, Notice } from "obsidian";
 import type VimLayerPlugin from "./main";
+import { onEveryWindow } from "./windows";
 import { appCommands, CmAdapter, cmOf, ExParams, isPluginEnabled, Pos, VimApi, vimApi } from "./obsidian-internal";
 
 const LEADER_COMMANDS = new Set([
@@ -60,11 +61,15 @@ export class Vimrc {
 		plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", tryLoad));
 		plugin.registerEvent(plugin.app.workspace.on("file-open", tryLoad));
 		plugin.app.workspace.onLayoutReady(tryLoad);
-		// Yank ↔ system clipboard, checked after each key and click like Vimrc Support does.
-		const sync = () => void this.syncClipboard();
-		plugin.registerDomEvent(activeDocument, "keyup", sync);
-		plugin.registerDomEvent(activeDocument, "click", sync);
-		plugin.registerDomEvent(activeDocument, "focusin", sync);
+		// set clipboard=unnamed: a yank goes to the system clipboard after the key that made it; the system clipboard
+		// comes back into the yank register when Obsidian regains focus or text is copied in it.
+		onEveryWindow(plugin, (win, doc) => {
+			plugin.registerDomEvent(doc, "keyup", () => this.pushYank());
+			plugin.registerDomEvent(win, "focus", () => void this.pullClipboard());
+			const afterCopy = () => window.setTimeout(() => void this.pullClipboard(), 0);
+			plugin.registerDomEvent(doc, "copy", afterCopy);
+			plugin.registerDomEvent(doc, "cut", afterCopy);
+		});
 	}
 
 	private editorCm(): CmAdapter | null {
@@ -77,13 +82,24 @@ export class Vimrc {
 		const cm = this.editorCm();
 		if (!vim || !cm) return;
 		this.loaded = true;
-		void this.readMappings();
-		// Commands and motions belong to this plugin instance, so define them on every load.
-		this.defineCommands(vim);
-		// Vim's mappings outlive a plugin reload: run the file only once per app session.
-		if (vim.loadedVimrc) return;
+		await this.apply(vim, cm, true);
+	}
+
+	/**
+	 * Start from Vim's own keymap and run the vimrc. Done on every plugin load as well as on "Reload vimrc":
+	 * Vim's keymap outlives a plugin reload, and running from a clean state leaves no stale or duplicate mappings.
+	 */
+	private async apply(vim: VimApi, cm: CmAdapter, quiet: boolean): Promise<number> {
+		// Also tells Vimrc Support, if it is ever enabled, that a vimrc is already loaded.
 		vim.loadedVimrc = true;
-		await this.runFile(vim, cm, this.plugin.settings.vimrcPath, true);
+		vim.mapclear?.();
+		this.leader = "\\";
+		this.clipboardSync = false;
+		// Commands and motions belong to this plugin instance; mapclear dropped the built-in motions too.
+		this.defineCommands(vim);
+		const errors = await this.runFile(vim, cm, this.plugin.settings.vimrcPath, quiet);
+		await this.readMappings();
+		return errors;
 	}
 
 	/** Clear user mappings and run the vimrc again. */
@@ -98,18 +114,8 @@ export class Vimrc {
 			new Notice("Vim Layer: open a note in the editor with Vim mode on, then reload");
 			return;
 		}
-		if (!this.loaded) {
-			this.loaded = true;
-			vim.loadedVimrc = true;
-			this.defineCommands(vim);
-		}
-		vim.mapclear?.();
-		// mapclear also drops the built-in motions (]] [[ gl gL gf); map them again.
-		this.mapBuiltins(vim);
-		this.leader = "\\";
-		this.clipboardSync = false;
-		const errors = await this.runFile(vim, cm, this.plugin.settings.vimrcPath, false);
-		await this.readMappings();
+		this.loaded = true;
+		const errors = await this.apply(vim, cm, false);
 		if (!errors) new Notice(`Vim Layer: reloaded ${this.plugin.settings.vimrcPath}`);
 	}
 
@@ -271,27 +277,36 @@ export class Vimrc {
 		vim.mapCommand("gx", "action", "vimLayerFollowLink", undefined, {});
 	}
 
-	private async syncClipboard(): Promise<void> {
+	private yankRegister() {
+		return vimApi()?.getRegisterController?.().getRegister("yank");
+	}
+
+	/** After a key in the editor: if the yank register changed, copy it to the system clipboard. No clipboard read. */
+	private pushYank(): void {
+		if (!this.clipboardSync || !activeDocument.activeElement?.closest(".cm-editor")) return;
+		const yank = this.yankRegister()?.keyBuffer?.[0] ?? "";
+		if (!yank || yank === this.lastYank) return;
+		this.lastYank = yank;
+		this.lastClipboard = yank;
+		navigator.clipboard.writeText(yank).catch(() => {
+			// The document may not be focused; the next yank tries again.
+		});
+	}
+
+	/** Bring text copied elsewhere into the yank register, so p pastes it. */
+	private async pullClipboard(): Promise<void> {
 		if (!this.clipboardSync) return;
-		const vim = vimApi();
-		const register = vim?.getRegisterController?.().getRegister("yank");
+		const register = this.yankRegister();
 		if (!register) return;
-		const yank = register.keyBuffer?.[0] ?? "";
+		let clip: string;
 		try {
-			if (yank !== this.lastYank) {
-				await navigator.clipboard.writeText(yank);
-				this.lastYank = yank;
-				this.lastClipboard = yank;
-				return;
-			}
-			const clip = await navigator.clipboard.readText();
-			if (clip !== this.lastClipboard) {
-				register.setText(clip);
-				this.lastClipboard = clip;
-				this.lastYank = register.keyBuffer?.[0] ?? "";
-			}
+			clip = await navigator.clipboard.readText();
 		} catch {
-			// The document may not be focused; try again on the next event.
+			return;
 		}
+		if (clip === this.lastClipboard) return;
+		register.setText(clip);
+		this.lastClipboard = clip;
+		this.lastYank = register.keyBuffer?.[0] ?? "";
 	}
 }

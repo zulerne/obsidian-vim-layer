@@ -1,5 +1,6 @@
 // Reading view layer: Vim keys while a note is in Reading view, switching between reading and editing,
 // and the mode indicator. Replaces Vimium+.
+import { onEveryWindow } from "../windows";
 import { MarkdownView, View, WorkspaceLeaf } from "obsidian";
 import { eventToKey, parseKey } from "../keys";
 import type VimLayerPlugin from "../main";
@@ -83,8 +84,6 @@ export class ReadingLayer {
 	private pendingTimer: number | null = null;
 	private mode: Mode = "reading";
 	private indicatorEl: HTMLElement | null = null;
-	private prevDefaultViewMode: unknown = undefined;
-	private prevVimMode: unknown = undefined;
 
 	constructor(private readonly plugin: VimLayerPlugin) {
 		this.hints = new HintEngine(plugin.app, () => ({
@@ -106,17 +105,14 @@ export class ReadingLayer {
 		this.reloadKeymap();
 		this.registerCommands();
 
-		const bind = (doc: Document) => plugin.registerDomEvent(doc, "keydown", (e) => this.onKeyDown(e), { capture: true });
-		bind(activeDocument);
-		plugin.registerEvent(app.workspace.on("window-open", (win) => bind(win.doc)));
+		onEveryWindow(plugin, (_win, doc) => plugin.registerDomEvent(doc, "keydown", (e) => this.onKeyDown(e), { capture: true }));
 
-		plugin.registerEvent(
-			app.workspace.on("active-leaf-change", (leaf) => {
-				void this.forceReading(leaf).then(() => this.syncFromView());
-			}),
-		);
+		// Switching panes keeps each pane's own mode; only a file newly opened in the active pane is forced.
+		plugin.registerEvent(app.workspace.on("active-leaf-change", () => this.syncFromView()));
 		plugin.registerEvent(app.workspace.on("layout-change", () => this.syncFromView()));
-		plugin.registerEvent(app.workspace.on("file-open", () => void this.forceReading(app.workspace.getMostRecentLeaf())));
+		plugin.registerEvent(
+			app.workspace.on("file-open", () => void this.forceReading(app.workspace.getActiveViewOfType(MarkdownView)?.leaf ?? null)),
+		);
 		plugin.vimMode.onModeChange(() => this.refreshIndicator());
 
 		app.workspace.onLayoutReady(() => {
@@ -137,36 +133,51 @@ export class ReadingLayer {
 		return errors;
 	}
 
-	/** Apply "Force Reading view" and "Turn on Vim mode", remembering previous values to restore. */
+	/**
+	 * Apply "Open notes in Reading view" and "Turn on Vim mode". Obsidian's own values are kept in data.json:
+	 * Obsidian does not unload plugins when it quits, so they must survive restarts to be restored later.
+	 */
 	applyConfig(): void {
 		const config = vaultConfig(this.plugin.app);
 		const s = this.plugin.settings;
 		const on = this.active;
+		let changed = false;
 		if (on && s.forceReadingView) {
-			if (this.prevDefaultViewMode === undefined) {
-				this.prevDefaultViewMode = config.getConfig("defaultViewMode") ?? "source";
-				config.setConfig("defaultViewMode", "preview");
+			if (s.originalDefaultViewMode === undefined) {
+				s.originalDefaultViewMode = config.getConfig("defaultViewMode") ?? "source";
+				changed = true;
 			}
-		} else if (this.prevDefaultViewMode !== undefined) {
-			config.setConfig("defaultViewMode", this.prevDefaultViewMode);
-			this.prevDefaultViewMode = undefined;
+			if (config.getConfig("defaultViewMode") !== "preview") config.setConfig("defaultViewMode", "preview");
+		} else if (s.originalDefaultViewMode !== undefined) {
+			config.setConfig("defaultViewMode", s.originalDefaultViewMode);
+			delete s.originalDefaultViewMode;
+			changed = true;
 		}
 		if (on && s.enableVimMode) {
-			if (this.prevVimMode === undefined) {
-				this.prevVimMode = config.getConfig("vimMode") ?? false;
-				config.setConfig("vimMode", true);
+			if (s.originalVimMode === undefined) {
+				s.originalVimMode = config.getConfig("vimMode") ?? false;
+				changed = true;
 			}
-		} else if (this.prevVimMode !== undefined) {
-			config.setConfig("vimMode", this.prevVimMode);
-			this.prevVimMode = undefined;
+			if (config.getConfig("vimMode") !== true) config.setConfig("vimMode", true);
+		} else if (s.originalVimMode !== undefined) {
+			config.setConfig("vimMode", s.originalVimMode);
+			delete s.originalVimMode;
+			changed = true;
 		}
+		if (changed) void this.plugin.saveSettings();
 		this.refreshIndicator();
 	}
 
+	/** The plugin is being turned off: give Obsidian its own values back. */
 	private restoreConfig(): void {
 		const config = vaultConfig(this.plugin.app);
-		if (this.prevDefaultViewMode !== undefined) config.setConfig("defaultViewMode", this.prevDefaultViewMode);
-		if (this.prevVimMode !== undefined) config.setConfig("vimMode", this.prevVimMode);
+		const s = this.plugin.settings;
+		if (s.originalDefaultViewMode === undefined && s.originalVimMode === undefined) return;
+		if (s.originalDefaultViewMode !== undefined) config.setConfig("defaultViewMode", s.originalDefaultViewMode);
+		if (s.originalVimMode !== undefined) config.setConfig("vimMode", s.originalVimMode);
+		delete s.originalDefaultViewMode;
+		delete s.originalVimMode;
+		void this.plugin.saveSettings();
 	}
 
 	private registerCommands(): void {

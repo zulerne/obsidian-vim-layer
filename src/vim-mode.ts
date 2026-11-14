@@ -29,8 +29,20 @@ export class VimModeWatcher {
 	}
 
 	private attachActive(): void {
+		// Forget editors that were closed.
+		for (const old of this.bound) {
+			if ((old as unknown as { cm6?: { dom?: HTMLElement } }).cm6?.dom?.isConnected === false) {
+				old.off("vim-mode-change", this.onChange);
+				this.bound.delete(old);
+			}
+		}
 		const cm = cmOf(this.plugin.app.workspace.getActiveViewOfType(MarkdownView));
-		if (!cm?.on || this.bound.has(cm)) return;
+		if (!cm?.on) return;
+		// Each editor has its own Vim mode: take the one of the editor that became active, without reporting a
+		// change (switching panes is not entering or leaving Insert mode).
+		const vim = cm.state?.vim;
+		if (vim) this.mode = vim.insertMode ? "insert" : vim.visualMode ? "visual" : "normal";
+		if (this.bound.has(cm)) return;
 		this.bound.add(cm);
 		cm.on("vim-mode-change", this.onChange);
 	}

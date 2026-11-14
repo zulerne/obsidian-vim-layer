@@ -1,4 +1,5 @@
 // Which-key for Vim prefixes in the editor: after g, z, [ or ] a bar lists the keys that can follow.
+import { onEveryWindow } from "./windows";
 import { MarkdownView } from "obsidian";
 import type VimLayerPlugin from "./main";
 import { CmAdapter, cmOf } from "./obsidian-internal";
@@ -63,15 +64,15 @@ const BUILT_IN: Record<string, [string, string][]> = {
 export class VimKeyHints {
 	private el: HTMLElement | null = null;
 	private timer: number | null = null;
+	/** Bumped by hide(), so a check scheduled before it does nothing. */
+	private generation = 0;
 
 	constructor(private readonly plugin: VimLayerPlugin) {}
 
 	load(): void {
 		const { plugin } = this;
 		// On the window, so it sees keys that the layout handler on the document passes to Vim itself.
-		const bind = (win: Window) => plugin.registerDomEvent(win, "keydown", () => this.onKey(), { capture: true });
-		bind(window);
-		plugin.registerEvent(plugin.app.workspace.on("window-open", (w) => bind(w.win)));
+		onEveryWindow(plugin, (win) => plugin.registerDomEvent(win, "keydown", () => this.onKey(), { capture: true }));
 		plugin.register(() => this.hide());
 	}
 
@@ -88,8 +89,11 @@ export class VimKeyHints {
 		if (!this.plugin.settings.vimKeyHints) return;
 		const cm = this.focusedCm();
 		if (!cm) return;
+		if (cm.state?.vim?.insertMode) return;
 		// Vim updates its key buffer after the event, so look on the next tick.
+		const generation = this.generation;
 		window.setTimeout(() => {
+			if (generation !== this.generation) return;
 			const vim = cm.state?.vim;
 			if (!vim || vim.insertMode) return;
 			const buffer = (vim.inputState?.keyBuffer ?? []).join("");
@@ -143,6 +147,7 @@ export class VimKeyHints {
 	}
 
 	hide(): void {
+		this.generation++;
 		if (this.timer !== null) window.clearTimeout(this.timer);
 		this.timer = null;
 		this.el?.remove();

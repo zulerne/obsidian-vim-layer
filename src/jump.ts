@@ -1,5 +1,6 @@
 // Editor jumps, like flash.nvim / hop: labels over visible text, type a label to move the cursor there.
 // "Jump to characters": type a few characters, then a label on each match. "Jump to word": a label on every word.
+import { onEveryWindow } from "./windows";
 import { MarkdownView, Notice } from "obsidian";
 import { eventToKey, isNonLatinLayout } from "./keys";
 import type VimLayerPlugin from "./main";
@@ -28,19 +29,6 @@ function editorView(view: MarkdownView | null): CmView | null {
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** The current keyboard layout: physical key code → character (Chromium Keyboard API). */
-type LayoutMap = { get(code: string): string | undefined; forEach(fn: (value: string, code: string) => void): void };
-
-async function currentLayout(): Promise<LayoutMap | null> {
-	const keyboard = (navigator as unknown as { keyboard?: { getLayoutMap?: () => Promise<LayoutMap> } }).keyboard;
-	try {
-		return (await keyboard?.getLayoutMap?.()) ?? null;
-	} catch {
-		return null;
-	}
-}
-
-const isLatin = (ch: string | undefined) => !ch || ch.charCodeAt(0) <= 0x7e;
 
 export class Jump {
 	private cm: CmView | null = null;
@@ -51,7 +39,6 @@ export class Jump {
 	private typed = "";
 	private targets: Target[] = [];
 	private container: HTMLElement | null = null;
-	private layout: LayoutMap | null = null;
 
 	constructor(private readonly plugin: VimLayerPlugin) {}
 
@@ -64,25 +51,16 @@ export class Jump {
 		plugin.addCommand({ id: "jump-to-chars", name: "Jump to characters (type, then a label)", callback: () => this.start("chars") });
 		plugin.addCommand({ id: "jump-to-word", name: "Jump to word (a label on every word)", callback: () => this.start("word") });
 		// Capture phase on the document, registered before the Reading view layer, so Esc cancels a jump first.
-		const bind = (doc: Document) => {
+		onEveryWindow(plugin, (_win, doc) => {
 			plugin.registerDomEvent(doc, "keydown", (e) => this.onKeyDown(e), { capture: true });
 			plugin.registerDomEvent(doc, "mousedown", () => this.cancel(), { capture: true });
-		};
-		bind(activeDocument);
-		plugin.registerEvent(plugin.app.workspace.on("window-open", (win) => bind(win.doc)));
+		});
 		plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", () => this.cancel()));
-		// Remember a non-Latin layout when you type in it, so jumps can find its letters while a Latin layout is on.
-		plugin.registerDomEvent(activeDocument, "keydown", (e) => this.learnLayout(e), { capture: true, passive: true });
 		plugin.register(() => this.cancel());
 	}
 
 	private start(kind: "chars" | "word"): void {
-		void currentLayout().then((layout) => this.begin(kind, layout));
-	}
-
-	private begin(kind: "chars" | "word", layout: LayoutMap | null): void {
 		this.cancel();
-		this.layout = layout;
 		const cm = editorView(this.plugin.app.workspace.getActiveViewOfType(MarkdownView));
 		if (!cm) {
 			new Notice("Vim Layer: jumps work in the editor");
@@ -119,7 +97,6 @@ export class Jump {
 		this.typed = "";
 		this.chars = "";
 		this.charClasses = [];
-		this.layout = null;
 		this.cm?.contentDOM.removeClass("vim-layer-jump-dim");
 		this.cm?.scrollDOM.removeEventListener("scroll", this.onScroll);
 		this.cm = null;
@@ -243,23 +220,6 @@ export class Jump {
 		this.refilter();
 	}
 
-	private saveTimer: number | null = null;
-
-	/**
-	 * Remember which character each key types in your non-Latin layout, from the keys you press.
-	 * (The Keyboard API reports Latin characters for a Russian layout on macOS, so it cannot be asked.)
-	 */
-	private learnLayout(e: KeyboardEvent): void {
-		if (e.ctrlKey || e.metaKey || e.altKey || [...e.key].length !== 1 || isLatin(e.key)) return;
-		if (!/^(Key[A-Z]|Backquote|BracketLeft|BracketRight|Semicolon|Quote|Comma|Period)$/.test(e.code)) return;
-		const ch = e.key.toLowerCase();
-		const known = this.plugin.settings.jumpAltLayout;
-		if (known[e.code] === ch) return;
-		this.plugin.settings.jumpAltLayout = { ...known, [e.code]: ch };
-		if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
-		this.saveTimer = window.setTimeout(() => void this.plugin.saveSettings(), 2000);
-	}
-
 	/**
 	 * A typed key matches what it types in the current layout and what it types on QWERTY,
 	 * so Cyrillic and Latin words are both found without switching layouts.
@@ -268,9 +228,8 @@ export class Jump {
 		const alternatives = new Set([e.key]);
 		const qwerty = eventToKey(e, "physical");
 		if (qwerty && [...qwerty].length === 1) alternatives.add(qwerty);
-		for (const ch of [this.layout?.get(e.code), this.plugin.settings.jumpAltLayout[e.code]]) {
-			if (ch) alternatives.add(e.shiftKey ? ch.toUpperCase() : ch);
-		}
+		const learned = this.plugin.settings.jumpAltLayout[e.code];
+		if (learned) alternatives.add(e.shiftKey ? learned.toUpperCase() : learned);
 		return `(?:${[...alternatives].map(escapeRegex).join("|")})`;
 	}
 
