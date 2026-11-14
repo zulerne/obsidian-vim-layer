@@ -2,7 +2,7 @@
   "name": "vim-layer",
   "version": "0.1.3",
   "private": true,
-  "description": "One Vim keyboard layer for the whole app, in any keyboard layout: a which-key leader menu, Reading view keys and link hints, Harpoon, input method switching and .vimrc.",
+  "description": "Vim keys beyond the editor: a Space leader menu with key hints, Reading view navigation and link hints, Harpoon-style file marks, .vimrc mappings, and a Latin layout outside Insert mode. Works in any keyboard layout.",
   "main": "main.js",
   "type": "module",
   "scripts": {

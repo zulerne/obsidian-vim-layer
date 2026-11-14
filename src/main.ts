@@ -1,4 +1,5 @@
 import { normalizePath, Notice, Plugin, TAbstractFile } from "obsidian";
+import { CommandIdModal } from "./command-id";
 import { Harpoon } from "./harpoon";
 import { InputMethodSwitcher } from "./im";
 import { DEFAULT_KEYMAP_YAML, extractYaml, GroupItem, parseKeymap } from "./leader/keymap";
@@ -22,6 +23,7 @@ export default class VimLayerPlugin extends Plugin {
 		this.addSettingTab(new VimLayerSettingTab(this.app, this));
 
 		this.addCommand({ id: "leader", name: "Open leader menu", callback: () => new LeaderModal(this).open() });
+		this.addCommand({ id: "copy-command-id", name: "Copy command ID", callback: () => new CommandIdModal(this.app).open() });
 		this.addCommand({ id: "reload-leader-keymap", name: "Reload leader keymap", callback: () => void this.loadLeaderKeymap(false) });
 
 		this.vimMode = new VimModeWatcher(this);
