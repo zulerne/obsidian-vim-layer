@@ -16,37 +16,41 @@ Desktop only.
 
 ## Quick start
 
-1. Install **Vim Layer** from **Settings → Community plugins → Browse** (or open the [listing](https://community.obsidian.md/plugins/vim-layer)) and enable it. To install manually, download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-vim-layer/releases/latest) into `<vault>/.obsidian/plugins/vim-layer/`.
-2. Turn on Vim mode: **Settings → Editor → Vim key bindings** (or **Settings → Vim Layer → Turn on Vim mode**).
-3. Make `Space` open the leader menu in the editor. Create a file named `.obsidian.vimrc` in the vault root with:
+1. **Install.** **Settings → Community plugins → Browse**, search for **Vim Layer**, install and enable it (or open the [listing](https://community.obsidian.md/plugins/vim-layer)). To install manually, download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-vim-layer/releases/latest) into `<vault>/.obsidian/plugins/vim-layer/`.
+2. **Try Reading view.** Open a note in Reading view (the book icon at the top of the note) and press `j`, `d`, `f`, `Space`. These keys work without any setup.
+3. **Turn on Vim mode** for the editor: **Settings → Vim Layer → Turn on Vim mode** (or Obsidian's own **Settings → Editor → Vim key bindings**).
+4. **Create the vimrc.** **Settings → Vim Layer → Create vimrc** writes `.obsidian.vimrc` to the vault root with these lines. They take effect at once, or when you next open a note in the editor:
 
    ```vim
+   " Space opens the Vim Layer leader menu, as in Reading view.
    unmap <Space>
    exmap leader obcommand vim-layer:leader
    nmap <Space> :leader<CR>
 
-   " Jumps: s + 2 characters, S = every word
+   " Jumps: s, then 2 characters of the target, then its label. S puts a label on every word.
    exmap flash obcommand vim-layer:jump-to-chars
    nmap s :flash<CR>
    exmap hop obcommand vim-layer:jump-to-word
    nmap S :hop<CR>
+
+   " Remove the quote below to make y and p use the system clipboard (also d, c and x).
+   " set clipboard=unnamed
    ```
 
-   Then run **Vim Layer: Reload vimrc** from the command palette, or restart Obsidian. Files starting with a dot are hidden in Obsidian, so create it with any text editor.
-4. Open a note in Reading view and press `j`, `f`, `Space`. Reading view keys and `Space` there work without any setup.
+   If you already have a `.obsidian.vimrc` (from Vimrc Support), the button leaves it alone; add the lines you want and run **Vim Layer: Reload vimrc**. Obsidian does not show files starting with a dot, so edit it with any text editor.
+5. **Use it.** In the editor, `Space` opens the leader menu and `s` / `S` jump. `Space a` marks the current file, `Space 1`…`Space 4` jump to marked files, `Space H` lists them.
 
 Optional next steps:
 
 - **Settings → Vim Layer → Open notes in Reading view** to always start in Reading view (`i` edits, `Esc` returns).
 - Your own leader keys: see [Leader menu](#leader-menu).
-- File marks: add them to the leader menu, see [File marks](#file-marks-harpoon).
 - Layout switching: see [Layout switching](#layout-switching).
 
 ## Leader menu
 
 `Space` opens a bar at the bottom of the window. Type the next key to run a command or open a group; after a short pause (**Hint delay**) the bar lists the keys you can press. `Backspace` steps back, `Esc` closes.
 
-In Reading view `Space` is bound by default. In the editor it needs the `.obsidian.vimrc` lines from the [Quick start](#quick-start); without Vim mode, assign a hotkey to **Vim Layer: Open leader menu** in **Settings → Hotkeys** (Obsidian hotkeys cannot use a bare `Space`).
+In Reading view `Space` is bound by default. In the editor it needs the vimrc from the [Quick start](#quick-start) (**Settings → Vim Layer → Create vimrc**); without Vim mode, assign a hotkey to **Vim Layer: Open leader menu** in **Settings → Hotkeys** (Obsidian hotkeys cannot use a bare `Space`).
 
 ### Built-in keys
 
@@ -60,6 +64,8 @@ In Reading view `Space` is bound by default. In the editor it needs the `.obsidi
 | `Space t n` / `t v` / `t s` / `t u` | New tab / split right / split down / reopen closed tab |
 | `Space b` | Bookmarks |
 | `Space o` | Outline |
+| `Space a` / `Space H` | Mark the current file / list marked files |
+| `Space 1`…`Space 4` | Go to marked file 1…4 |
 
 ### Your own keys
 
@@ -141,7 +147,7 @@ Vim Layer's own actions can go anywhere a command ID goes (hotkeys, the leader m
 
 ## Jumps
 
-Two commands for the editor, usually mapped to `s` and `S` in `.obsidian.vimrc` (see [Quick start](#quick-start)):
+Two commands for the editor, mapped to `s` and `S` by the vimrc from the [Quick start](#quick-start):
 
 | Command | ID | What happens |
 |---|---|---|
@@ -165,7 +171,7 @@ A short numbered list of files (up to 9). Jumping back to a file puts you where 
 | Harpoon: go to file 1…9 | `vim-layer:harpoon-1` … `vim-layer:harpoon-9` |
 | Harpoon: remove current file | `vim-layer:harpoon-remove` |
 
-The commands have no keys of their own. Add them to the leader keymap (`a`, `H`, `"1"`…`"4"`, as in the example above) or to **Settings → Hotkeys**.
+The built-in leader menu has them: `Space a` adds, `Space H` lists, `Space 1`…`Space 4` jump. With your own keymap file, add them there (`a`, `H`, `"1"`…`"4"`, as in the example above) or to **Settings → Hotkeys**; files 5–9 have commands too.
 
 In the list: `j`/`k` move, `Enter` or `l` opens, `1`–`9` open by number, `J`/`K` reorder, `dd` removes, `p` puts the removed file back, `Esc` closes. Renamed files stay in the list; deleted files drop out. A list from the Harpoon plugin (`harpoon-cache.json`) is imported once.
 
@@ -193,7 +199,7 @@ When you leave Insert mode, Vim Layer remembers your keyboard layout and switche
 
 ## .vimrc
 
-Vim Layer runs `.obsidian.vimrc` from the vault root (**Settings → Vim Layer → Vimrc file**) when the first editor opens. After editing it, run **Vim Layer: Reload vimrc**.
+Vim Layer runs `.obsidian.vimrc` from the vault root (**Settings → Vim Layer → Vimrc file**) when the first editor opens. **Create vimrc** in the same section writes a starting file (see [Quick start](#quick-start)). After editing it, run **Vim Layer: Reload vimrc**.
 
 | Line | Meaning |
 |---|---|

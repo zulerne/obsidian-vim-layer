@@ -382,11 +382,18 @@ export class VimLayerSettingTab extends PluginSettingTab {
 					control: { type: "text", key: "vimrcPath", placeholder: DEFAULT_SETTINGS.vimrcPath },
 				},
 				{
+					name: "Create vimrc",
+					desc: "Create the vimrc file with the Quick start keys: Space opens the leader menu in the editor, s and S jump. An existing file is not changed.",
+					render: (setting) => {
+						setting.addButton((b) => b.setButtonText("Create").onClick(() => void p.vimrc.createExample()));
+					},
+				},
+				{
 					name: "Reload vimrc",
 					desc: "Clear the mappings and run the vimrc file again.",
 					render: (setting) => {
-							setting.addButton((b) => b.setButtonText("Reload").onClick(() => void p.vimrc.reload()));
-						},
+						setting.addButton((b) => b.setButtonText("Reload").onClick(() => void p.vimrc.reload()));
+					},
 				},
 			],
 		});
@@ -713,5 +720,9 @@ export class VimLayerSettingTab extends PluginSettingTab {
 				}),
 			)
 			.addButton((b) => b.setButtonText("Reload").onClick(() => void p.vimrc.reload()));
+		new Setting(containerEl)
+			.setName("Create vimrc")
+			.setDesc("Create the vimrc file with the Quick start keys: Space opens the leader menu in the editor, s and S jump. An existing file is not changed.")
+			.addButton((b) => b.setButtonText("Create").onClick(() => void p.vimrc.createExample()));
 	}
 }

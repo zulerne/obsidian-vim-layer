@@ -11,6 +11,25 @@ const LEADER_COMMANDS = new Set([
 	"unmap", "iunmap", "nunmap", "vunmap",
 ]);
 
+/** Written by "Create vimrc" for new users: the editor keys of the Quick start. */
+export const EXAMPLE_VIMRC = `" Vim mode keys for Obsidian, run by Vim Layer.
+" After editing this file, run "Vim Layer: Reload vimrc" from the command palette.
+
+" Space opens the Vim Layer leader menu, as in Reading view.
+unmap <Space>
+exmap leader obcommand vim-layer:leader
+nmap <Space> :leader<CR>
+
+" Jumps: s, then 2 characters of the target, then its label. S puts a label on every word.
+exmap flash obcommand vim-layer:jump-to-chars
+nmap s :flash<CR>
+exmap hop obcommand vim-layer:jump-to-word
+nmap S :hop<CR>
+
+" Remove the quote below to make y and p use the system clipboard (also d, c and x).
+" set clipboard=unnamed
+`;
+
 /** A vimrc may "source" another file; this stops a file that sources itself. */
 const MAX_SOURCE_DEPTH = 5;
 
@@ -132,6 +151,27 @@ export class Vimrc {
 		this.loaded = true;
 		const errors = await this.apply(vim, cm, false);
 		if (!errors) new Notice(`Vim Layer: reloaded ${this.plugin.settings.vimrcPath}`);
+	}
+
+	/** Create the vimrc with the Quick start keys, unless the file exists. Returns whether it was created. */
+	async createExample(): Promise<boolean> {
+		const path = this.plugin.settings.vimrcPath;
+		const adapter = this.plugin.app.vault.adapter;
+		if (await adapter.exists(path)) {
+			new Notice(`Vim Layer: ${path} already exists and was not changed`);
+			return false;
+		}
+		try {
+			await adapter.write(path, EXAMPLE_VIMRC);
+		} catch (e) {
+			new Notice(`Vim Layer: cannot create ${path}: ${e instanceof Error ? e.message : String(e)}`);
+			return false;
+		}
+		new Notice(`Vim Layer: created ${path}. In the editor (Vim mode), Space opens the leader menu and s / S jump.`, 8000);
+		// Run it now if an editor is open, otherwise when the first one opens.
+		this.loaded = false;
+		await this.loadOnce();
+		return true;
 	}
 
 	userMappings(): ReadonlyMap<string, string> {

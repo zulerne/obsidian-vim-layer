@@ -122,4 +122,10 @@ items:
       u: workspace:undo-close-pane Reopen closed tab
   b: bookmarks:open Bookmarks
   o: outline:open Outline
+  a: vim-layer:harpoon-add Mark file
+  H: vim-layer:harpoon-list Marked files
+  "1": vim-layer:harpoon-1 Mark 1
+  "2": vim-layer:harpoon-2 Mark 2
+  "3": vim-layer:harpoon-3 Mark 3
+  "4": vim-layer:harpoon-4 Mark 4
 `;
