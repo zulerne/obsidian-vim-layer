@@ -26,6 +26,8 @@ n vim-layer:search-next
 N vim-layer:search-previous
 J workspace:next-tab
 K workspace:previous-tab
+g t workspace:next-tab
+g T workspace:previous-tab
 t workspace:new-tab
 x workspace:close
 X workspace:undo-close-pane

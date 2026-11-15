@@ -3,7 +3,7 @@
 Vim keys beyond the editor. Obsidian's Vim mode only works while you edit a note; Vim Layer adds the rest:
 
 - **Leader menu**: press `Space` and pick a command from a menu of keys (`Space f` find a file, `Space /` search…), like which-key in Neovim.
-- **Reading view keys**: `j`/`k` to scroll, `f` to put letter labels on links and click them from the keyboard, `J`/`K` to switch tabs, `i` to start editing and `Esc` to go back to reading.
+- **Reading view keys**, like Vimium in a browser: `d`/`u` to scroll half a page and `j`/`k` line by line, `f` to put letter labels on links and click them from the keyboard, `J`/`K` to switch tabs, `i` to start editing and `Esc` to go back to reading.
 - **Jumps**: in the editor, `s` + two characters puts labels on the matches and `S` puts a label on every word; type a label to move the cursor there, like flash.nvim and hop.
 - **File marks**: pin a few files and jump to them with `Space 1`…`Space 4`, like Harpoon in Neovim.
 - **Layout switching**: Latin layout in Normal mode, your own layout back when you type in Insert mode.
@@ -91,7 +91,7 @@ items:
 
 ## Reading view
 
-The keys work while a note is in Reading view (or a tab is empty) and no text field has focus.
+Vimium-style keys for reading notes. Reading view is Obsidian's mode for reading a note without editing it (the book icon at the top of a note, or **Settings → Editor → Default view for new tabs**). The keys work while a note is in Reading view (or a tab is empty) and no text field has focus. The defaults are those of Vimium+ and mostly those of Vimium; `J` is the next tab and `K` the previous one, the other way round from Vimium (`gt` / `gT` work as in Vimium), and `o` opens the quick switcher.
 
 | Keys | Action |
 |---|---|
@@ -101,7 +101,7 @@ The keys work while a note is in Reading view (or a tab is empty) and no text fi
 | `f` | Letter labels on links, buttons and collapsible callouts; type a label to click it |
 | `F`, or Shift on the last letter | Same, opening links in a new tab |
 | `/` | Search in the note: type, `Enter` to stay on the first match, then `n` / `N` for the next / previous one; `Esc` closes |
-| `J` / `K` | Next / previous tab |
+| `J` / `K`, `gt` / `gT` | Next / previous tab |
 | `t` / `x` / `X` | New tab / close tab / reopen closed tab |
 | `H` / `L` | Back / forward |
 | `b` / `B` | Open a bookmark here / in a new tab |
