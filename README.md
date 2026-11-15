@@ -16,7 +16,7 @@ Desktop only.
 
 ## Quick start
 
-1. Install **Vim Layer** from **Settings → Community plugins → Browse** and enable it.
+1. Install **Vim Layer** from **Settings → Community plugins → Browse** (or open the [listing](https://community.obsidian.md/plugins/vim-layer)) and enable it. To install manually, download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zulerne/obsidian-vim-layer/releases/latest) into `<vault>/.obsidian/plugins/vim-layer/`.
 2. Turn on Vim mode: **Settings → Editor → Vim key bindings** (or **Settings → Vim Layer → Turn on Vim mode**).
 3. Make `Space` open the leader menu in the editor. Create a file named `.obsidian.vimrc` in the vault root with:
 
