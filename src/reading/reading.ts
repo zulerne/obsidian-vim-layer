@@ -11,6 +11,12 @@ import { scrollBy, scrollHalfPage, scrollToEdge } from "./scroll";
 
 const CHORD_TIMEOUT_MS = 600;
 
+/**
+ * Views besides a note's Reading view where the keys work. A base's table uses only arrows, Tab, Enter, Esc,
+ * Backspace/Delete and Ctrl/Shift/Cmd combinations, so plain letters and Space are free.
+ */
+const READING_VIEW_TYPES = new Set(["empty", "bases"]);
+
 export const DEFAULT_READING_KEYMAP = `# Reading view keys: key sequence, then a command ID. Later lines win.
 j vim-layer:scroll-down
 k vim-layer:scroll-up
@@ -289,12 +295,12 @@ export class ReadingLayer {
 		return false;
 	}
 
-	/** Reading view of a note, or an empty tab. */
+	/** Reading view of a note, a base (.base file) or an empty tab. Text fields are excluded by the caller. */
 	private inReadingContext(): boolean {
 		const view = this.plugin.app.workspace.getActiveViewOfType(View);
 		if (!view) return false;
 		if (view instanceof MarkdownView) return view.getMode() === "preview";
-		return view.getViewType() === "empty";
+		return READING_VIEW_TYPES.has(view.getViewType());
 	}
 
 	/** Esc in Vim normal mode (nothing pending) leaves the editor for Reading view. */

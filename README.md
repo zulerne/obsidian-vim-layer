@@ -97,7 +97,7 @@ items:
 
 ## Reading view
 
-Vimium-style keys for reading notes. Reading view is Obsidian's mode for reading a note without editing it (the book icon at the top of a note, or **Settings → Editor → Default view for new tabs**). The keys work while a note is in Reading view (or a tab is empty) and no text field has focus. The defaults are those of Vimium+ and mostly those of Vimium; `J` is the next tab and `K` the previous one, the other way round from Vimium (`gt` / `gT` work as in Vimium), and `o` opens the quick switcher.
+Vimium-style keys for reading notes. Reading view is Obsidian's mode for reading a note without editing it (the book icon at the top of a note, or **Settings → Editor → Default view for new tabs**). The keys work while a note is in Reading view, a base (`.base` file) is open or a tab is empty, and no text field has focus. In a base, `j`/`k` scroll and `f` labels the links to notes; the arrow keys, `Enter` and `Esc` keep working in the table as usual. The defaults are those of Vimium+ and mostly those of Vimium; `J` is the next tab and `K` the previous one, the other way round from Vimium (`gt` / `gT` work as in Vimium), and `o` opens the quick switcher.
 
 | Keys | Action |
 |---|---|
@@ -136,7 +136,7 @@ Vim Layer's own actions can go anywhere a command ID goes (hotkeys, the leader m
 
 | Setting | Default | What it does |
 |---|---|---|
-| Vim keys in Reading view | on | Turns all of the above on or off |
+| Vim keys in Reading view | on | Turns all of the above on or off, in bases too |
 | Open notes in Reading view | off | Notes open in Reading view; Obsidian's default view mode is restored when turned off |
 | Esc returns to Reading view | on | `Esc` in Vim Normal mode leaves the editor |
 | Turn on Vim mode | off | Turns on Obsidian's Vim key bindings while Vim Layer runs |

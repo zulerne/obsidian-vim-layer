@@ -1,7 +1,8 @@
 // Scrolls the active view: Reading view, the editor or any other scrollable view.
 import { App } from "obsidian";
 
-const SELECTORS = [".markdown-preview-view", ".cm-scroller", ".view-content"];
+// .bases-view: the table or cards of a base.
+const SELECTORS = [".markdown-preview-view", ".cm-scroller", ".bases-view", ".view-content"];
 
 /**
  * The main scroll area of the active view: the largest visible candidate. A note's hidden editor

@@ -23,6 +23,7 @@ export const DEFAULT_HINT_SELECTORS = [
 	".markdown-embed-link",
 	".markdown-preview-view .callout.is-collapsible > .callout-title",
 	".markdown-preview-view summary",
+	".bases-view .internal-link",
 ];
 
 export interface VimLayerSettings {
@@ -217,7 +218,7 @@ export class VimLayerSettingTab extends PluginSettingTab {
 					conflict("vimium-plus", "Vimium+"),
 					{
 						name: "Vim keys in Reading view",
-						desc: "Scrolling, link hints, tabs and your own bindings while a note is in Reading view or a tab is empty.",
+						desc: "Scrolling, link hints, tabs and your own bindings while a note is in Reading view, a base is open or a tab is empty.",
 						control: { type: "toggle", key: "readingEnabled" },
 					},
 					{
@@ -513,7 +514,7 @@ export class VimLayerSettingTab extends PluginSettingTab {
 		this.note(containerEl, "vimium-plus", "Vimium+");
 		new Setting(containerEl)
 			.setName("Vim keys in Reading view")
-			.setDesc("Scrolling, link hints, tabs and your own bindings while a note is in Reading view or a tab is empty.")
+			.setDesc("Scrolling, link hints, tabs and your own bindings while a note is in Reading view, a base is open or a tab is empty.")
 			.addToggle((t) =>
 				t.setValue(s.readingEnabled).onChange(async (v) => {
 					s.readingEnabled = v;
