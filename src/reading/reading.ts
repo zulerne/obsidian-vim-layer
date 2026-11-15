@@ -249,7 +249,11 @@ export class ReadingLayer {
 			e.stopPropagation();
 			return;
 		}
-		if (!this.inReadingContext() || isEditableTarget()) return;
+		if (!this.inReadingContext() || isEditableTarget()) {
+			// A prefix typed in Reading view does not wait for a key typed somewhere else.
+			this.clearPending();
+			return;
+		}
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const key = eventToKey(e, this.plugin.settings.keyMode);
 		if (key === null) return;
@@ -298,6 +302,8 @@ export class ReadingLayer {
 		if (!view || view.getMode() !== "source") return false;
 		const target = activeDocument.activeElement;
 		if (!target || !view.contentEl.contains(target) || !target.closest(".cm-editor")) return false;
+		// Esc closes an open suggestion list (links, tags) first.
+		if (activeDocument.querySelector(".suggestion-container")) return false;
 		const vim = cmOf(view)?.state?.vim;
 		if (vim) {
 			const input = vim.inputState;

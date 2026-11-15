@@ -61,7 +61,9 @@ export class Jump {
 
 	private start(kind: "chars" | "word"): void {
 		this.cancel();
-		const cm = editorView(this.plugin.app.workspace.getActiveViewOfType(MarkdownView));
+		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		// In Reading view the editor exists but is hidden.
+		const cm = view?.getMode() === "source" ? editorView(view) : null;
 		if (!cm) {
 			new Notice("Vim Layer: jumps work in the editor");
 			return;

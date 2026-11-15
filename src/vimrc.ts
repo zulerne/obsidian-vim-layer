@@ -11,6 +11,9 @@ const LEADER_COMMANDS = new Set([
 	"unmap", "iunmap", "nunmap", "vunmap",
 ]);
 
+/** A vimrc may "source" another file; this stops a file that sources itself. */
+const MAX_SOURCE_DEPTH = 5;
+
 const HEADING = /^#{1,6} /gm;
 const CODE_BLOCK = /(^```+)(.*?^\1|.*)/gms;
 const LINK = /\[\[.*?\]\]|\[(?:[^\\[\]\n]|\\.)*?\]\(.*?[^\\]\)|[a-z]+:\/\/\S+/g;
@@ -46,6 +49,8 @@ export class Vimrc {
 	private clipboardSync = false;
 	private lastYank = "";
 	private lastClipboard = "";
+	/** Nesting of the file being run, read by the "source" command. */
+	private sourceDepth = 0;
 
 	constructor(private readonly plugin: VimLayerPlugin) {}
 
@@ -60,7 +65,17 @@ export class Vimrc {
 		const tryLoad = () => void this.loadOnce();
 		plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", tryLoad));
 		plugin.registerEvent(plugin.app.workspace.on("file-open", tryLoad));
+		// Leaving Reading view for the editor changes the layout but not the active leaf.
+		plugin.registerEvent(plugin.app.workspace.on("layout-change", tryLoad));
 		plugin.app.workspace.onLayoutReady(tryLoad);
+		// Vim's keymap outlives the plugin: without this, mappings to this plugin's commands would stay and fail,
+		// and Vimrc Support would see a vimrc as already loaded.
+		plugin.register(() => {
+			const vim = vimApi();
+			if (!this.loaded || !vim) return;
+			vim.mapclear?.();
+			vim.loadedVimrc = false;
+		});
 		// set clipboard=unnamed: a yank goes to the system clipboard after the key that made it; the system clipboard
 		// comes back into the yank register when Obsidian regains focus or text is copied in it.
 		onEveryWindow(plugin, (win, doc) => {
@@ -97,7 +112,7 @@ export class Vimrc {
 		this.clipboardSync = false;
 		// Commands and motions belong to this plugin instance; mapclear dropped the built-in motions too.
 		this.defineCommands(vim);
-		const errors = await this.runFile(vim, cm, this.plugin.settings.vimrcPath, quiet);
+		const errors = await this.runFile(vim, cm, this.plugin.settings.vimrcPath, quiet, 0);
 		await this.readMappings();
 		return errors;
 	}
@@ -158,8 +173,12 @@ export class Vimrc {
 		this.mappings = out;
 	}
 
-	/** Returns the number of failed lines. */
-	private async runFile(vim: VimApi, cm: CmAdapter, path: string, quiet: boolean): Promise<number> {
+	/** Returns the number of failed lines. `depth` counts nested "source" commands. */
+	private async runFile(vim: VimApi, cm: CmAdapter, path: string, quiet: boolean, depth: number): Promise<number> {
+		if (depth > MAX_SOURCE_DEPTH) {
+			new Notice(`Vim Layer: "source ${path}" is nested too deep (a file that sources itself?)`);
+			return 1;
+		}
 		let text: string;
 		try {
 			text = await this.plugin.app.vault.adapter.read(path);
@@ -168,6 +187,8 @@ export class Vimrc {
 			return 1;
 		}
 		const errors: string[] = [];
+		// Lines run synchronously, so a "source" among them sees this file's depth.
+		this.sourceDepth = depth;
 		text.split("\n").forEach((raw, i) => {
 			const line = raw.trim();
 			if (!line || line.startsWith('"')) return;
@@ -184,6 +205,7 @@ export class Vimrc {
 				errors.push(`${path}:${i + 1}: ${e instanceof Error ? e.message : String(e)}`);
 			}
 		});
+		this.sourceDepth = 0;
 		if (errors.length) {
 			console.warn("Vim Layer: vimrc errors\n" + errors.join("\n"));
 			new Notice(`Vim Layer: ${errors.length} vimrc line(s) failed:\n${errors.slice(0, 5).join("\n")}`, 10000);
@@ -191,24 +213,11 @@ export class Vimrc {
 		return errors.length;
 	}
 
+	/** Obsidian runs the command with its own checks, for the editor that has focus (a note, a canvas card…). */
 	private runObsidianCommand(id: string): void {
 		const commands = appCommands(this.plugin.app);
-		const command = commands.commands[id] as
-			| {
-					callback?: () => void;
-					checkCallback?: (checking: boolean) => boolean | void;
-					editorCallback?: (editor: unknown, view: unknown) => void;
-					editorCheckCallback?: (checking: boolean, editor: unknown, view: unknown) => boolean | void;
-			  }
-			| undefined;
-		if (!command) throw new Error(`Command ${id} was not found; run "obcommand" without arguments to list commands in the console`);
-		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-		const editor = view?.editor;
-		if (command.editorCheckCallback) command.editorCheckCallback(false, editor, view);
-		else if (command.editorCallback) command.editorCallback(editor, view);
-		else if (command.checkCallback) command.checkCallback(false);
-		else if (command.callback) command.callback();
-		else throw new Error(`Command ${id} cannot be run from Vim`);
+		if (!commands.findCommand(id)) throw new Error(`Command ${id} was not found; use "Copy command ID" to look it up`);
+		commands.executeCommandById(id);
 	}
 
 	private defineCommands(vim: VimApi): void {
@@ -247,7 +256,7 @@ export class Vimrc {
 		});
 		vim.defineEx("source", "", (cm, p: ExParams) => {
 			const file = p.argString?.trim();
-			if (file) void this.runFile(vim, cm, file, false);
+			if (file) void this.runFile(vim, cm, file, false, this.sourceDepth + 1);
 		});
 
 		vim.defineMotion("vimLayerNextHeading", (cm: CmAdapter, head: Pos, a: { repeat: number }) => jumpToHeading(cm, head, a.repeat, "next"));

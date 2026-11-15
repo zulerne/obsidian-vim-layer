@@ -148,9 +148,19 @@ export class VimLayerSettingTab extends PluginSettingTab {
 				t.inputEl.rows = rows;
 				t.inputEl.spellcheck = false;
 				t.setValue(get());
-				t.inputEl.addEventListener("blur", () => {
+				// Saved shortly after typing stops and when the field loses focus, so the text is kept even if the
+				// settings close without a blur event.
+				let timer: number | null = null;
+				const flush = () => {
+					if (timer !== null) window.clearTimeout(timer);
+					timer = null;
 					if (t.getValue() !== get()) void set(t.getValue());
+				};
+				t.inputEl.addEventListener("input", () => {
+					if (timer !== null) window.clearTimeout(timer);
+					timer = window.setTimeout(flush, 500);
 				});
+				t.inputEl.addEventListener("blur", flush);
 			});
 			setting.addExtraButton((b) =>
 				b
@@ -212,7 +222,7 @@ export class VimLayerSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Key bindings",
-						desc: "One per line: key sequence, then a command ID (g g vim-layer:scroll-to-top). Keys use the leader keymap notation; a later line wins; “-” as the command removes a binding. Saved when the field loses focus.",
+						desc: "One per line: key sequence, then a command ID (g g vim-layer:scroll-to-top). Keys use the leader keymap notation; a later line wins; “-” as the command removes a binding.",
 						render: (setting) =>
 							codeArea(
 								setting,
@@ -238,7 +248,7 @@ export class VimLayerSettingTab extends PluginSettingTab {
 					},
 					{
 						name: "Hint targets",
-						desc: "CSS selectors of elements that get a hint, one per line. Saved when the field loses focus.",
+						desc: "CSS selectors of elements that get a hint, one per line.",
 						render: (setting) =>
 							codeArea(
 								setting,

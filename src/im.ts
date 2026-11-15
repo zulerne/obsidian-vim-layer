@@ -10,6 +10,8 @@ type Exec = (cmd: string, opts: { env: NodeJS.ProcessEnv; timeout: number }, cb:
 export class InputMethodSwitcher {
 	private saved = "";
 	private exec: Exec | null = null;
+	/** Commands run one after another, so a quick Esc, i cannot restore a layout before it was saved. */
+	private queue: Promise<void> = Promise.resolve();
 
 	constructor(private readonly plugin: VimLayerPlugin) {}
 
@@ -42,12 +44,15 @@ export class InputMethodSwitcher {
 		if (!this.active) return;
 		const s = this.plugin.imSettings();
 		if (mode === "insert") {
-			if (s.imEnterCommand && s.imGetCommand && this.saved) void this.run(s.imEnterCommand.replace(/\{\{im\}\}/g, this.saved));
+			if (!s.imEnterCommand || !s.imGetCommand) return;
+			this.queue = this.queue.then(async () => {
+				if (this.saved) await this.run(s.imEnterCommand.replace(/\{\{im\}\}/g, this.saved));
+			});
 		} else if (prev === "insert" && s.imLeaveCommand) {
-			void (async () => {
+			this.queue = this.queue.then(async () => {
 				if (s.imEnterCommand && s.imGetCommand) this.saved = await this.run(s.imGetCommand);
 				await this.run(s.imLeaveCommand);
-			})();
+			});
 		}
 	}
 }

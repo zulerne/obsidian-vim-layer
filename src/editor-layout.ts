@@ -1,13 +1,16 @@
 // Non-Latin keyboard layouts in one place: track which layout is on, learn which character each key types in it,
 // and let Obsidian's Vim read keys by position.
 //
-// - Letters and other non-ASCII characters go through Vim's own langmap (built from the learned layout), so f/t/r
+// - Letters of a non-Latin layout go through Vim's own langmap (built from the learned layout), so f/t/r
 //   still take the typed character literally.
 // - ASCII punctuation that sits on another key in the layout ("/" types "." on a Russian layout) cannot be
-//   remapped by langmap without breaking Latin layouts; those keys are sent to Vim by position here.
+//   remapped by langmap without breaking Latin layouts; those keys are sent to Vim by position here, and so are
+//   symbols on keys that are not learned ("№" on Shift+3).
+// - Latin layouts are left alone, including their letters outside ASCII ("ö", "ñ"): mappings for them in a vimrc
+//   keep working.
 import { onEveryWindow } from "./windows";
 import { MarkdownView } from "obsidian";
-import { isNonLatinLayout, qwertyChar, refreshLayout, trackLayout } from "./keys";
+import { isNonLatinChar, isNonLatinLayout, qwertyChar, refreshLayout, trackLayout } from "./keys";
 import type VimLayerPlugin from "./main";
 import { cmOf, vimApi } from "./obsidian-internal";
 
@@ -54,7 +57,7 @@ export class EditorLayout {
 
 	/** Remember which character each key types in the non-Latin layout, from the keys you press. */
 	private learn(e: KeyboardEvent): void {
-		if (e.ctrlKey || e.metaKey || e.altKey || [...e.key].length !== 1 || isAscii(e.key) || !LEARNED_CODES.test(e.code)) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || !isNonLatinChar(e.key) || !LEARNED_CODES.test(e.code)) return;
 		const ch = e.key.toLowerCase();
 		const known = this.plugin.settings.jumpAltLayout;
 		if (known[e.code] === ch) return;
@@ -70,7 +73,7 @@ export class EditorLayout {
 		if (!vim?.langmap || this.plugin.settings.keyMode === "typed") return;
 		const pairs: string[] = [];
 		for (const [code, ch] of Object.entries(this.plugin.settings.jumpAltLayout)) {
-			if (isAscii(ch)) continue;
+			if (!isNonLatinChar(ch)) continue;
 			const lower = qwertyChar({ code, shiftKey: false } as KeyboardEvent);
 			const upper = qwertyChar({ code, shiftKey: true } as KeyboardEvent);
 			if (!lower || !upper) continue;
@@ -87,10 +90,14 @@ export class EditorLayout {
 		this.appliedLangmap = langmap;
 	}
 
-	/** ASCII punctuation on another key ("/" types "." on a Russian layout): send it to Vim by position. */
+	/**
+	 * Punctuation on another key ("/" types "." on a Russian layout, Shift+3 types "№"): send it to Vim by position.
+	 * Characters of learned keys are left to the langmap.
+	 */
 	private remapPunctuation(e: KeyboardEvent): void {
 		if (this.plugin.settings.keyMode === "typed" || !isNonLatinLayout()) return;
-		if (e.ctrlKey || e.metaKey || e.altKey || [...e.key].length !== 1 || !isAscii(e.key) || /^Key[A-Z]$/.test(e.code)) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || [...e.key].length !== 1 || /^Key[A-Z]$/.test(e.code)) return;
+		if (!isAscii(e.key) && LEARNED_CODES.test(e.code)) return;
 		// A jump reads its own keys.
 		if (this.plugin.jump?.active) return;
 		const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);

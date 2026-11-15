@@ -76,6 +76,14 @@ const MOD_ORDER = ["c", "a", "m", "s"];
 
 const isChar = (s: string) => [...s].length === 1;
 
+/**
+ * A character of a non-Latin layout: Cyrillic, Greek, Hebrew… and symbols outside ASCII ("№").
+ * Latin letters outside ASCII ("ö", "ñ", "ı") belong to Latin layouts and are read as typed.
+ */
+export function isNonLatinChar(ch: string): boolean {
+	return isChar(ch) && ch.charCodeAt(0) > 0x7e && !/\p{Script=Latin}/u.test(ch);
+}
+
 function build(mods: Set<string>, base: string): string {
 	if (isChar(base) && mods.has("s")) {
 		mods.delete("s");
@@ -119,10 +127,14 @@ export function isNonLatinLayout(): boolean {
 	return nonLatinLayout;
 }
 
-/** Update the layout guess from a letter key: what it typed tells which layout is on. */
+/**
+ * Update the layout guess from a letter key: the letter it typed tells which layout is on.
+ * Punctuation on a letter key (AZERTY "," on KeyM, Hebrew "/" on KeyQ) says nothing and is skipped.
+ */
 export function trackLayout(e: KeyboardEvent): void {
 	if (e.ctrlKey || e.metaKey || e.altKey || !/^Key[A-Z]$/.test(e.code) || !isChar(e.key)) return;
-	nonLatinLayout = e.key.charCodeAt(0) > 0x7e;
+	if (!/\p{L}/u.test(e.key)) return;
+	nonLatinLayout = isNonLatinChar(e.key);
 }
 
 /** Ask the system for the current layout (Chromium Keyboard API), for keys pressed before any letter. */
@@ -132,7 +144,7 @@ export async function refreshLayout(): Promise<void> {
 		const a = (await keyboard?.getLayoutMap?.())?.get("KeyA");
 		// Only ever switch on: some systems report Latin characters for a non-Latin layout, and a typed letter
 		// switches it off anyway. On a US layout a stale "on" changes nothing, since keys already sit where QWERTY has them.
-		if (a && a.charCodeAt(0) > 0x7e) nonLatinLayout = true;
+		if (a && isNonLatinChar(a)) nonLatinLayout = true;
 	} catch {
 		// Not available: keep the guess from typed letters.
 	}
@@ -165,7 +177,7 @@ export function eventToKey(evt: KeyboardEvent, mode: KeyMode): string | null {
 	}
 
 	let ch: string | null = null;
-	const nonLatin = isChar(evt.key) && evt.key.charCodeAt(0) > 0x7e;
+	const nonLatin = isNonLatinChar(evt.key);
 	// Alt on macOS produces special characters, so it always uses the key position.
 	if (mode === "physical" || (mode === "auto" && (nonLatin || nonLatinLayout)) || evt.altKey) {
 		ch = qwertyChar(evt);
